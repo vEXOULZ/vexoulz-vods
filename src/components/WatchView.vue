@@ -3,6 +3,8 @@
 // all parts, a controls row (chapters, part picker, copy link, download, theater, shortcuts) and the chat replay.
 // On phones the same controls reflow under the video and chat goes below; nothing is dropped.
 import {
+  gamePalette,
+  learnGameColors,
   useToast,
   VxAccountMenu,
   VxButton,
@@ -25,11 +27,13 @@ import {
   type Vod,
 } from '@vexoulz/vods-core'
 import { useChat, useProgress } from '@vexoulz/vods-core/vue'
-import { computed, onMounted, onUnmounted, ref, shallowRef, toRef } from 'vue'
+import { computed, onMounted, onUnmounted, ref, shallowRef, toRef, watch, watchEffect } from 'vue'
 import ChatPanel from '@/components/ChatPanel.vue'
 import WatchTimeline from '@/components/WatchTimeline.vue'
 import { useChatSettings } from '@/composables/useChatSettings'
+import { useFullscreen } from '@/composables/useFullscreen'
 import { useShortcuts, type Shortcut } from '@/composables/useShortcuts'
+import { boxArt, gamesWithArt } from '@/lib/art'
 import { NAV } from '@/lib/nav'
 
 const props = withDefaults(
@@ -123,7 +127,9 @@ const partOffset = computed(() => props.timeline.locate(time.value).offset)
 const chapters = computed(() => props.timeline.chapters.filter((c) => c.end > range.value.start && c.start < range.value.end))
 const chapter = computed(() => props.timeline.chapterAt(time.value))
 const chapterIdx = computed(() => (chapter.value ? chapters.value.indexOf(chapter.value) : -1))
-const posterGames = computed(() => [...new Set(chapters.value.map((c) => c.name))])
+const palette = computed(() => gamePalette(props.timeline.chapters.map((c) => c.name)))
+const posterGames = computed(() => gamesWithArt(chapters.value).map((g) => ({ ...g, color: palette.value.get(g.name) })))
+watchEffect(() => learnGameColors(posterGames.value))
 function stepChapter(dir: 1 | -1) {
   const open = chapters.value.filter((c) => !c.restricted)
   const t = time.value
@@ -134,6 +140,17 @@ function stepChapter(dir: 1 | -1) {
 
 // ---- actions ----
 const theater = ref(false)
+/** In theater mode the controls tuck away; a faint strip under the video brings them back. */
+const controlsOpen = ref(true)
+watch(theater, (on) => (controlsOpen.value = !on))
+const showControls = computed(() => !theater.value || controlsOpen.value)
+const fullscreen = useFullscreen()
+async function toggleFullscreen() {
+  if (!(await fullscreen.toggle())) toast.show("The browser didn't allow fullscreen", { kind: 'error' })
+}
+const fullscreenLabel = computed(() =>
+  !fullscreen.supported ? "Fullscreen isn't available in this browser" : fullscreen.active.value ? 'Exit fullscreen' : 'Fullscreen',
+)
 async function copyLink() {
   const url = props.shareUrl(time.value)
   try {
@@ -161,6 +178,8 @@ const shortcuts = computed<Shortcut[]>(() => [
   { keys: [']'], display: ']', label: 'Next part', run: () => partIndex.value < spans.value.length - 1 && playPart(partIndex.value + 1) },
   { keys: ['c'], display: 'c', label: 'Show / hide chat', run: () => (chat.open = !chat.open) },
   { keys: ['t'], display: 't', label: 'Theater mode', run: () => (theater.value = !theater.value) },
+  { keys: ['h'], display: 'h', label: 'Show / hide controls (theater)', run: () => theater.value && (controlsOpen.value = !controlsOpen.value) },
+  { keys: ['f'], display: 'f', label: 'Fullscreen', run: () => fullscreen.supported && toggleFullscreen() },
   { keys: ['y'], display: 'y', label: 'Copy link at this time', run: copyLink },
 ])
 useShortcuts(() => shortcuts.value)
@@ -171,7 +190,7 @@ useShortcuts(() => shortcuts.value)
     <template v-if="theater" #header><span class="no-header" hidden></span></template>
     <template #account><VxAccountMenu disabled note="Sign-in comes later; progress is saved in this browser." /></template>
 
-    <div class="watch" :class="{ nochat: !chat.open }">
+    <div class="watch" :class="{ nochat: !chat.open }" :style="{ '--chat-w': `${chat.width}%` }">
       <section class="stage">
         <div class="video">
           <div class="video-box">
@@ -199,7 +218,19 @@ useShortcuts(() => shortcuts.value)
           <VxButton v-if="!chat.open" class="chat-reopen" icon label="Show chat" @click="chat.open = true">⇤</VxButton>
         </div>
 
-        <div class="controls">
+        <button
+          v-if="theater"
+          type="button"
+          class="peek"
+          :class="{ open: controlsOpen }"
+          :aria-label="controlsOpen ? 'Hide controls' : 'Show controls'"
+          :title="controlsOpen ? 'Hide controls (h)' : 'Show controls (h)'"
+          :aria-expanded="controlsOpen"
+          @click="controlsOpen = !controlsOpen"
+        >
+          <span aria-hidden="true">{{ controlsOpen ? '▾' : '▴' }}</span>
+        </button>
+        <div v-show="showControls" class="controls">
           <WatchTimeline
             :timeline="timeline"
             :range="range"
@@ -207,6 +238,7 @@ useShortcuts(() => shortcuts.value)
             :status="status"
             :part-index="partIndex"
             :part-label="partLabel"
+            :palette="palette"
             @seek="seek"
           />
           <div class="row">
@@ -226,11 +258,14 @@ useShortcuts(() => shortcuts.value)
                     :key="i"
                     :current="i === chapterIdx"
                     :disabled="c.restricted"
-                    :sub="c.restricted ? 'cut' : toClock(c.start)"
+                    :sub="toClock(c.start)"
                     @click="seek(Math.max(c.start, range.start)); close()"
                   >
-                    <template #lead><VxPosters :games="[c.name]" mode="row" :size="24" /></template>
+                    <template #lead>
+                      <VxPosters :games="[{ name: c.name, image: boxArt(c.image) ?? undefined, color: palette.get(c.name) }]" mode="row" :size="24" />
+                    </template>
                     {{ c.name }}
+                    <template v-if="c.restricted" #trail><VxChip title="Cut from the YouTube uploads">cut</VxChip></template>
                   </VxMenuItem>
                 </template>
               </VxPopover>
@@ -273,6 +308,15 @@ useShortcuts(() => shortcuts.value)
             <VxButton icon :label="theater ? 'Leave theater mode' : 'Theater mode'" :pressed="theater" @click="theater = !theater">
               {{ theater ? '⤡' : '⤢' }}
             </VxButton>
+            <VxButton
+              icon
+              :label="fullscreenLabel"
+              :pressed="fullscreen.active.value"
+              :disabled="!fullscreen.supported"
+              @click="toggleFullscreen"
+            >
+              ⛶
+            </VxButton>
             <VxPopover prefer="up" align="right" width="min(260px, calc(100vw - 24px))" role="dialog">
               <template #trigger="{ toggle, open }">
                 <VxButton icon label="Keyboard shortcuts" :pressed="open" @click="toggle">?</VxButton>
@@ -292,7 +336,9 @@ useShortcuts(() => shortcuts.value)
 </template>
 
 <style scoped>
-.watch { display: grid; grid-template-columns: minmax(0, 1fr) 340px; flex: 1; min-height: 0; }
+/* Chat width is the viewer's share of the page (chat settings), but never under 240px or so wide the video
+   gets narrower than 320px. */
+.watch { display: grid; grid-template-columns: minmax(0, 1fr) clamp(240px, var(--chat-w, 26%), max(240px, calc(100% - 320px))); flex: 1; min-height: 0; }
 .watch.nochat { grid-template-columns: minmax(0, 1fr); }
 
 .stage { position: relative; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
@@ -307,6 +353,13 @@ useShortcuts(() => shortcuts.value)
 .un-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
 
 .controls { border-top: 1px solid var(--vx-line); background: rgb(0 0 0 / 0.7); }
+.peek {
+  display: grid; place-items: center; width: 100%; height: 14px; padding: 0; border: none; flex: none;
+  background: #000; color: var(--vx-muted); font-size: 10px; line-height: 1; cursor: pointer; opacity: 0.35;
+  transition: opacity 0.15s, color 0.15s;
+}
+.peek:hover, .peek:focus-visible { opacity: 1; color: var(--vx-ink); }
+.peek:focus-visible { outline: 2px solid var(--vx-accent); outline-offset: -2px; }
 .row { display: flex; align-items: center; gap: 8px; padding: 6px 12px 8px; min-width: 0; }
 .time { font-size: 12px; white-space: nowrap; }
 .now { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; margin-left: 4px; }

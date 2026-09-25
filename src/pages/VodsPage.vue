@@ -1,11 +1,10 @@
 <script setup lang="ts">
-// Past broadcasts: search, game chips and a date range (all combinable and kept in the URL), a grid of cards,
-// and "load more". On phones the search field moves under a square button; nothing else changes.
+// Past broadcasts: one filter bar (All resets, title search, game dropdown with every game in the archive, date
+// range; all combinable and kept in the URL), a grid of cards, and "load more". On phones the bar wraps.
 import {
   VxAccountMenu,
   VxButton,
   VxCallout,
-  VxChip,
   VxDateRange,
   VxEmptyState,
   VxInput,
@@ -13,11 +12,13 @@ import {
   VxSiteShell,
   VxSkeleton,
 } from '@vexoulz/ui'
-import { isResumable, type Progress, type Vod } from '@vexoulz/vods-core'
+import { isResumable, type GamePlayed, type Progress, type Vod } from '@vexoulz/vods-core'
 import { useVodsContext } from '@vexoulz/vods-core/vue'
 import { computed, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import GamePicker from '@/components/GamePicker.vue'
 import VodCard from '@/components/VodCard.vue'
+import { loadGamesPlayed } from '@/lib/gamesPlayed'
 import { hasFilters, parseListQuery, toApiFilter, toListQuery, type ListState } from '@/lib/listQuery'
 import { NAV } from '@/lib/nav'
 import { site, vodsConfig } from '@/vods.config'
@@ -71,7 +72,6 @@ const loadMore = () => go({ page: lastPage + 1 })
 
 // ---- search (debounced into the URL) ----
 const titleDraft = ref(state.value.title)
-const searchOpen = ref(!!state.value.title)
 watch(
   () => state.value.title,
   (t) => {
@@ -86,20 +86,26 @@ watch(titleDraft, (t) => {
   }, 350)
 })
 
-// ---- game chips: the most-played games of the last 100 VODs ----
-const topGames = ref<string[]>([])
-client
-  .listVods({ perPage: 100 })
-  .then(({ vods }) => {
-    const counts = new Map<string, number>()
-    for (const v of vods) for (const g of new Set(v.chapters.map((c) => c.name))) counts.set(g, (counts.get(g) ?? 0) + 1)
-    topGames.value = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([g]) => g)
-  })
-  .catch(() => undefined)
-const gameChips = computed(() => {
-  const g = state.value.game
-  return g && !topGames.value.includes(g) ? [g, ...topGames.value] : topGames.value
+// ---- games: every game in the archive ----
+const games = shallowRef<GamePlayed[] | null>(null)
+const gamesError = ref<string | null>(null)
+function fetchGames(retry = false) {
+  gamesError.value = null
+  loadGamesPlayed(client, retry)
+    .then((g) => (games.value = g))
+    .catch((e: Error) => (gamesError.value = e.message || 'Something went wrong'))
+}
+fetchGames()
+const game = computed({
+  get: () => state.value.game,
+  set: (g: string) => go({ game: g }),
 })
+
+function resetAll() {
+  clearTimeout(searchTimer)
+  titleDraft.value = ''
+  router.replace({ query: {} })
+}
 
 // ---- dates ----
 const dateFrom = ref(state.value.from)
@@ -130,31 +136,25 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
 
 <template>
   <VxSiteShell site="vods" :nav="NAV">
-    <template #actions>
-      <VxInput v-model="titleDraft" class="search wide-only" type="search" placeholder="Search vods…" clearable />
-      <VxButton class="narrow-only" icon label="Search" :pressed="searchOpen" @click="searchOpen = !searchOpen">⌕</VxButton>
-    </template>
     <template #account><VxAccountMenu disabled note="Sign-in comes later; progress is saved in this browser." /></template>
-
-    <VxInput v-if="searchOpen" v-model="titleDraft" class="search-row narrow-only" type="search" placeholder="Search vods…" clearable />
 
     <div class="bar">
       <h1 class="vx-display">Past broadcasts</h1>
       <div class="filters">
-        <VxChip clickable :active="!state.game" @click="go({ game: '' })">All</VxChip>
-        <VxChip v-for="g in gameChips" :key="g" clickable :active="state.game === g" @click="go({ game: state.game === g ? '' : g })">
-          {{ g }}
-        </VxChip>
+        <VxButton :pressed="!hasFilters(state)" label="Show all VODs (clear every filter)" @click="resetAll">All</VxButton>
+        <VxInput v-model="titleDraft" class="search" type="search" placeholder="Search titles…" clearable>
+          <template #icon>⌕</template>
+        </VxInput>
+        <GamePicker v-model="game" :games="games" :error="gamesError" @retry="fetchGames(true)" />
         <VxPopover width="min(320px, calc(100vw - 32px))" role="dialog">
           <template #trigger="{ toggle, open }">
-            <VxButton size="sm" :pressed="open || !!(state.from || state.to)" @click="toggle">📅 {{ dateLabel }}</VxButton>
+            <VxButton :pressed="open || !!(state.from || state.to)" @click="toggle">📅 {{ dateLabel }} ▾</VxButton>
           </template>
           <div class="date-pop">
             <div class="vx-eyebrow">Streamed between</div>
             <VxDateRange v-model:from="dateFrom" v-model:to="dateTo" :min="minDay" />
           </div>
         </VxPopover>
-        <VxButton v-if="hasFilters(state)" size="sm" variant="ghost" @click="router.replace({ query: {} })">Clear filters</VxButton>
       </div>
     </div>
 
@@ -173,7 +173,7 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
 
     <VxEmptyState v-else-if="!vods.length" title="No VODs match" :text="hasFilters(state) ? 'Try another search or date range.' : 'Nothing archived yet.'">
       <template v-if="hasFilters(state)" #actions>
-        <VxButton @click="router.replace({ query: {} })">Clear filters</VxButton>
+        <VxButton @click="resetAll">Clear filters</VxButton>
       </template>
     </VxEmptyState>
 
@@ -190,17 +190,15 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
 </template>
 
 <style scoped>
-.search { width: 220px; }
-.search-row { width: 100%; margin-bottom: 16px; }
-.narrow-only { display: none; }
-@container vx-site (max-width: 700px) {
-  .wide-only { display: none; }
-  .narrow-only { display: inline-flex; }
-  .search-row.narrow-only { display: flex; }
-}
 .bar { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
 .bar h1 { font-size: 28px; }
-.filters { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.search { flex: 1 1 220px; max-width: 360px; }
+.search :deep(input) { width: 100%; }
+@container vx-site (max-width: 700px) {
+  /* Search gets its own full-width line; All, game and dates share the next. */
+  .search { order: -1; flex-basis: 100%; max-width: none; }
+}
 .date-pop { display: flex; flex-direction: column; gap: 8px; padding: 8px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 24px 18px; }
 .sk { display: flex; flex-direction: column; gap: 8px; }
