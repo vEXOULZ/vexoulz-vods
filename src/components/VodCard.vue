@@ -1,49 +1,96 @@
 <script setup lang="ts">
-// One VOD in the list: placeholder thumbnail with duration, fanned game posters, chapter strip, and where you
-// stopped (from watch progress) with a bar showing how much you've seen.
-import { VxChapterBar, VxLink, VxPlaceholder, VxPosters } from '@vexoulz/ui'
-import { gamesOf, toClock, type Progress, type Vod } from '@vexoulz/vods-core'
-import { computed } from 'vue'
+// One VOD in the list: YouTube thumbnail with duration, fanned game posters (a button: opens the chapters, each a
+// link to that point), chapter strip, and where you stopped (from watch progress) with a bar showing how much
+// you've seen. Thumbnail and title link to the VOD; the posters sit outside those links.
+import { learnGameColors, VxChapterBar, VxLink, VxMenuItem, VxPlaceholder, VxPopover, VxPosters } from '@vexoulz/ui'
+import { toClock, type Progress, type Vod } from '@vexoulz/vods-core'
+import { computed, ref, watchEffect } from 'vue'
+import { boxArt, gamesWithArt, thumbnailOf } from '@/lib/art'
 import { watchPath } from '@/lib/listQuery'
 
 const props = defineProps<{ vod: Vod; progress?: Progress | null }>()
 
-const games = computed(() => gamesOf(props.vod))
+const games = computed(() => gamesWithArt(props.vod.chapters))
+watchEffect(() => learnGameColors(games.value))
 const date = computed(() =>
   props.vod.createdAt.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }),
 )
 const to = computed(() => watchPath(props.vod, props.progress?.t))
 const watched = computed(() => (props.progress && props.vod.duration ? Math.min(1, props.progress.t / props.vod.duration) : 0))
+const title = computed(() => props.vod.title || 'Untitled stream')
+
+const thumb = computed(() => thumbnailOf(props.vod))
+const broken = ref(false)
+watchEffect(() => {
+  void thumb.value
+  broken.value = false
+})
 </script>
 
 <template>
-  <VxLink :to="to" class="card">
+  <article class="card">
     <div class="thumb">
-      <div class="vx-ring img"><VxPlaceholder label="thumbnail 16:9" ratio="16 / 9" /></div>
-      <span class="dur vx-mono">{{ toClock(vod.duration) }}</span>
-      <template v-if="progress">
-        <span class="resume vx-mono" :title="`You stopped at ${toClock(progress.t)}. Opens the VOD right there.`">
-          ▶ {{ toClock(progress.t) }}
-        </span>
-        <span class="watched" :style="{ width: `${watched * 100}%` }"></span>
-      </template>
-      <VxPosters v-if="games.length" class="posters" :games="games" mode="fan" :size="30" />
-      <VxChapterBar v-if="vod.chapters.length" class="chapters" :chapters="vod.chapters" />
+      <VxLink :to="to" class="thumb-link" :aria-label="title" tabindex="-1">
+        <div class="vx-ring img">
+          <img v-if="thumb && !broken" :src="thumb" alt="" loading="lazy" decoding="async" @error="broken = true" />
+          <VxPlaceholder v-else label="no thumbnail" ratio="16 / 9" />
+        </div>
+        <span class="dur vx-mono">{{ toClock(vod.duration) }}</span>
+        <template v-if="progress">
+          <span class="resume vx-mono" :title="`You stopped at ${toClock(progress.t)}. Opens the VOD right there.`">
+            ▶ {{ toClock(progress.t) }}
+          </span>
+          <span class="watched" :style="{ width: `${watched * 100}%` }"></span>
+        </template>
+        <VxChapterBar v-if="vod.chapters.length" class="chapters" :chapters="vod.chapters" />
+      </VxLink>
+
+      <VxPopover v-if="games.length" class="posters" width="min(320px, calc(100vw - 24px))" :cap="340">
+        <template #trigger="{ toggle, open }">
+          <button
+            type="button"
+            class="poster-btn"
+            :class="{ open }"
+            :aria-label="`Chapters: ${games.map((g) => g.name).join(', ')}`"
+            :aria-expanded="open"
+            @click="toggle"
+          >
+            <VxPosters :games="games" mode="fan" :size="30" />
+          </button>
+        </template>
+        <template #default="{ close }">
+          <div class="vx-eyebrow menu-head">Chapters · {{ vod.chapters.length }}</div>
+          <VxMenuItem
+            v-for="(c, i) in vod.chapters"
+            :key="i"
+            :to="c.restricted ? undefined : watchPath(vod, c.start)"
+            :disabled="c.restricted"
+            :sub="c.restricted ? 'cut' : toClock(c.start)"
+            @click="close()"
+          >
+            <template #lead><VxPosters :games="[{ name: c.name, image: boxArt(c.image) ?? undefined }]" mode="row" :size="24" /></template>
+            {{ c.name }}
+          </VxMenuItem>
+        </template>
+      </VxPopover>
     </div>
-    <div class="text">
-      <div class="title">{{ vod.title || 'Untitled stream' }}</div>
-      <div class="meta">
+
+    <VxLink :to="to" class="text">
+      <span class="title">{{ title }}</span>
+      <span class="meta">
         <span class="vx-mono date">{{ date }}</span>
-        <span v-if="games.length" class="games">{{ games.join(', ') }}</span>
-      </div>
-    </div>
-  </VxLink>
+        <span v-if="games.length" class="games">{{ games.map((g) => g.name).join(', ') }}</span>
+      </span>
+    </VxLink>
+  </article>
 </template>
 
 <style scoped>
-.card { display: flex; flex-direction: column; gap: 9px; color: inherit; text-decoration: none; min-width: 0; }
+.card { display: flex; flex-direction: column; gap: 9px; min-width: 0; }
 .thumb { position: relative; }
-.img { border-radius: var(--vx-radius); }
+.thumb-link { display: block; position: relative; color: inherit; }
+.img { border-radius: var(--vx-radius); overflow: hidden; aspect-ratio: 16 / 9; background: var(--vx-surface); }
+.img img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .img :deep(.vx-ph) { border-radius: var(--vx-radius); background-color: var(--vx-surface); }
 .dur, .resume {
   position: absolute; top: 6px; font-size: 11px; padding: 0 6px; border-radius: var(--vx-radius-sm);
@@ -52,11 +99,20 @@ const watched = computed(() => (props.progress && props.vod.duration ? Math.min(
 .dur { right: 6px; color: #fff; }
 .resume { left: 6px; color: var(--vx-accent); }
 .watched { position: absolute; left: 0; bottom: 3px; height: 3px; background: var(--vx-accent); z-index: 1; }
-.posters { position: absolute; left: 8px; bottom: 10px; }
 .chapters { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 0 0 var(--vx-radius) var(--vx-radius); overflow: hidden; }
-.text { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.posters { position: absolute; left: 8px; bottom: 10px; z-index: 2; }
+/* An open chapter list must cover the cards below it (their posters sit at the same level). */
+.posters:has(.vx-popover-panel) { z-index: 30; }
+.poster-btn {
+  display: flex; padding: 2px 4px; margin: -2px -4px; background: none; border: none; cursor: pointer;
+  border-radius: var(--vx-radius-sm); color: inherit;
+}
+.poster-btn:hover, .poster-btn.open { filter: brightness(1.15); }
+.poster-btn:focus-visible { outline: 2px solid var(--vx-accent); outline-offset: 2px; }
+.menu-head { padding: 6px 8px; }
+.text { min-width: 0; display: flex; flex-direction: column; gap: 3px; color: inherit; text-decoration: none; }
 .title { color: var(--vx-ink); font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
-.card:hover .title, .card:focus-visible .title { color: var(--vx-accent); }
+.text:hover .title, .text:focus-visible .title, .card:has(.thumb-link:hover) .title { color: var(--vx-accent); }
 .meta { display: flex; gap: 6px; align-items: center; min-width: 0; font-size: 12px; color: var(--vx-muted); }
 .date { white-space: nowrap; }
 .games { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
