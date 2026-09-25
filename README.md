@@ -20,7 +20,7 @@ git config core.hooksPath .githooks   # once per clone: branch-name rules, see C
 
 | path | what |
 |---|---|
-| `/`, `/vods` | list: title search, game chips, date range, "load more"; all kept in the URL (`?title=&game=&from=&to=&page=`) |
+| `/`, `/vods` | list: an "All" reset, title search, a game dropdown (every game in the archive, most played first), date range, "load more"; all kept in the URL (`?title=&game=&from=&to=&page=`) |
 | `/vods/:id` | watch the VOD uploads |
 | `/live/:id` | watch the live uploads |
 | `/youtube/:id` | watch whichever upload set exists (live first, like the old site) |
@@ -33,10 +33,12 @@ VODs with restricted (cut) chapters, where the old `?t=` was upload time.
 
 The watch page has the same controls on phones and desktops: part picker (with parts YouTube can't play marked,
 plus a panel to skip them), chapters, copy link, Drive download when there is one, theater mode, keyboard
-shortcuts (`?`), and chat settings (delay in 0.1 s steps, timestamps, badges, name colours, emote sources, text
-size). Chat settings and watch progress are saved in this browser; accounts come later.
+fullscreen, keyboard shortcuts (`?`), and chat settings (delay in 0.1 s steps, timestamps (off by default), badges,
+name colours, emote sources, text size, chat width beside the video). Chat settings and watch progress are saved in
+this browser; accounts come later.
 
-Thumbnails and box art are placeholders until real assets exist.
+Thumbnails come from YouTube and box art from Twitch. Emotes load from each provider's own CDN (Twitch, 7TV, BTTV,
+FFZ). The game dropdown is built from the VODs' chapters, since the archive API has no list of games.
 
 ## Config
 

@@ -1,10 +1,10 @@
 <script setup lang="ts">
 // Chat replay beside (or under) the player. Follows the newest line unless you scroll up; then a button takes you
 // back down. Settings (delay, timestamps, badges, name colours, emote sources, size) are the viewer's own.
-import { twitchColor, VxButton, VxChip, VxPopover, VxSegmented, VxStepper, VxSwitch } from '@vexoulz/ui'
+import { twitchColor, VxButton, VxChip, VxPopover, VxSegmented, VxSlider, VxStepper, VxSwitch } from '@vexoulz/ui'
 import { toClock, type ChatMessage, type Token } from '@vexoulz/vods-core'
 import { nextTick, ref, watch } from 'vue'
-import { DELAY_LIMIT, type ChatSettings } from '@/composables/useChatSettings'
+import { DELAY_LIMIT, WIDTH_MAX, WIDTH_MIN, type ChatSettings } from '@/composables/useChatSettings'
 
 const props = defineProps<{ messages: ChatMessage[]; settings: ChatSettings; error?: string | null; playing: boolean }>()
 const emit = defineEmits<{ hide: [] }>()
@@ -66,8 +66,8 @@ const sizeOpts = [
               <VxButton size="sm" variant="ghost" :disabled="!settings.delay" @click="settings.delay = 0">reset</VxButton>
             </span>
           </div>
-          <div class="set"><span>Timestamps</span><VxSwitch v-model="settings.timestamps" label="Timestamps" /></div>
-          <div class="set"><span>Badges</span><VxSwitch v-model="settings.badges" label="Badges" /></div>
+          <div class="set"><label for="chat-ts">Timestamps</label><VxSwitch id="chat-ts" v-model="settings.timestamps" /></div>
+          <div class="set"><label for="chat-badges">Badges</label><VxSwitch id="chat-badges" v-model="settings.badges" /></div>
           <div class="set col">
             <span>Name colours <span class="vx-muted small">as chosen by each chatter</span></span>
             <VxSegmented v-model="settings.colors" :options="colorOpts" label="Name colours" />
@@ -79,6 +79,14 @@ const sizeOpts = [
             </span>
           </div>
           <div class="set"><span>Text size</span><VxSegmented v-model="settings.size" :options="sizeOpts" label="Text size" /></div>
+          <div class="set col">
+            <span>Chat width <span class="vx-muted small">share of the page beside the video; on phones chat sits below</span></span>
+            <span class="row wide">
+              <VxSlider v-model="settings.width" :min="WIDTH_MIN" :max="WIDTH_MAX" label="Chat width in percent of the page" class="grow" />
+              <span class="vx-mono small pct">{{ settings.width }}%</span>
+              <VxButton size="sm" variant="ghost" :disabled="settings.width === 26" @click="settings.width = 26">reset</VxButton>
+            </span>
+          </div>
         </div>
       </VxPopover>
     </div>
@@ -119,6 +127,9 @@ const sizeOpts = [
 .set { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 0; font-size: 13px; }
 .set.col { flex-direction: column; align-items: flex-start; gap: 6px; }
 .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.row.wide { width: 100%; flex-wrap: nowrap; }
+.grow { flex: 1; min-width: 0; }
+.pct { width: 3.5ch; text-align: right; }
 .small { font-size: 11px; }
 .lines {
   flex: 1; min-height: 0; overflow-y: auto; padding: 8px 12px; display: flex; flex-direction: column; gap: 3px;
