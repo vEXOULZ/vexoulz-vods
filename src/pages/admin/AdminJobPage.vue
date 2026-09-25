@@ -185,7 +185,7 @@ onMounted(() => (document.title = `Job ${props.id} · Admin · vods.vexoulz.net`
           <h2 class="vx-eyebrow">Log</h2>
           <div ref="logBox" class="log vx-panel vx-mono" role="log" aria-live="polite" @scroll="onLogScroll">
             <p v-if="eventsError" class="vx-muted">{{ eventsError }}</p>
-            <p v-else-if="!events.length" class="vx-muted">No log lines yet.</p>
+            <p v-else-if="!events.length" class="vx-muted">{{ job && ['done', 'failed', 'cancelled'].includes(job.state) ? 'This job wrote no log lines.' : 'No log lines yet.' }}</p>
             <div v-for="e in logLines" :key="e.seq" class="line" :class="`is-${e.level}`">
               <span class="t" :title="stamp(e.at)">{{ time(e.at) }}</span>
               <span v-if="e.step" class="s">{{ e.step }}</span>

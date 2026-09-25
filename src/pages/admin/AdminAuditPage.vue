@@ -42,7 +42,9 @@ const columns: TableColumn[] = [
   { key: 'target', label: 'Target', mono: true },
   { key: 'detail', label: 'Details', mono: true },
 ]
-const rows = computed(() => entries.value.map((e) => ({ ...e, detailText: e.detail == null ? '' : JSON.stringify(e.detail) })))
+// Logins have their password stripped, which leaves an empty object: show that as no details.
+const detailText = (d: unknown) => (d == null || (typeof d === 'object' && !Object.keys(d).length) ? '' : JSON.stringify(d))
+const rows = computed(() => entries.value.map((e) => ({ ...e, detailText: detailText(e.detail) })))
 
 /** "vod:123" → the VOD's admin page, "job:5" → the job's. */
 function targetLink(target: string | null): string | null {
