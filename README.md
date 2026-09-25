@@ -38,7 +38,7 @@ name colours, emote sources, text size, chat width beside the video). Chat setti
 this browser; accounts come later.
 
 Thumbnails come from YouTube and box art from Twitch. Emotes load from each provider's own CDN (Twitch, 7TV, BTTV,
-FFZ). The game dropdown is built from the VODs' chapters, since the archive API has no list of games.
+FFZ). The game dropdown comes from the archive's `/v1/games-played` and filters by exact game.
 
 ## Config
 
