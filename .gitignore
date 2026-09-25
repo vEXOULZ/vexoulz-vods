@@ -35,3 +35,6 @@ coverage
 *.local.*
 /deploy.local/
 
+
+# Vite/Vitest cache
+.vite/
