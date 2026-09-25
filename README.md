@@ -40,6 +40,15 @@ this browser; accounts come later.
 Thumbnails come from YouTube and box art from Twitch. Emotes load from each provider's own CDN (Twitch, 7TV, BTTV,
 FFZ). The game dropdown comes from the archive's `/v1/games-played` and filters by exact game.
 
+## Admin (`/admin`)
+Archive admin: status overview, the job queue (filter, start, pause/resume/retry/cancel, pause-before steps, live
+log). It talks to twitch-archive's worker admin API at `/backend-admin` on the site's origin (`VITE_ADMIN_API`), with
+a password session (HttpOnly cookie + CSRF token); the browser never holds an API key. The contract is in
+[docs/admin-api.md](docs/admin-api.md). Not linked from the public pages.
+
+In `npm run dev`, `/backend-admin` is a built-in in-memory mock (`dev/adminMock.ts`, password `admin`) unless
+`VITE_DEV_ADMIN_TARGET` is set in `.env.local`. The mock is never part of a build.
+
 ## Config
 
 Channel settings live in [`src/vods.config.ts`](src/vods.config.ts). The API base comes from `VITE_ARCHIVE_API`
