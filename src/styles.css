@@ -1,0 +1,16 @@
+/* Site-level additions on top of @vexoulz/ui. Keep this small; shared styles belong in the library. */
+html,
+body {
+  margin: 0;
+  background: var(--vx-bg);
+}
+
+/* The shell's min-height: 100% needs a sized parent. */
+#app > .vx-site {
+  min-height: 100dvh;
+}
+
+/* App-like pages (watch) fill exactly one window. */
+#app > .vx-site.is-fill {
+  height: 100dvh;
+}
