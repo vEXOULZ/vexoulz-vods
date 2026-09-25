@@ -72,22 +72,22 @@ async function save() {
           placeholder="Video id or YouTube URL"
           @change="setId(r, ($event.target as HTMLInputElement).value)"
         />
-        <VxSelect v-model="r.type" :options="TYPES" size="sm" width="96px" />
+        <VxSelect v-model="r.type" :options="TYPES" width="96px" />
         <label class="part">
           <span class="vx-muted">Part</span>
           <input v-model.number="r.part" class="vx-input vx-mono num" type="number" min="1" step="1" :aria-label="`Row ${i + 1} part number`" />
         </label>
         <TimeInput v-model="r.duration" optional placeholder="duration" :label="`Part ${i + 1} duration`" />
-        <VxButton size="sm" variant="ghost" icon :label="`Remove row ${i + 1}`" @click="remove(r)">×</VxButton>
+        <VxButton variant="ghost" icon :label="`Remove row ${i + 1}`" @click="remove(r)">×</VxButton>
         <p v-if="errors.has(r.key)" class="err">{{ errors.get(r.key) }}</p>
       </li>
     </ol>
     <VxCallout v-if="error" tone="error" title="Couldn't save the YouTube parts">{{ error }}</VxCallout>
     <div class="foot">
-      <VxButton size="sm" @click="add">+ Add part</VxButton>
+      <VxButton @click="add">+ Add part</VxButton>
       <span class="spacer" />
-      <VxButton size="sm" :disabled="!dirty || saving" @click="reset">Undo changes</VxButton>
-      <VxButton size="sm" variant="primary" :loading="saving" :disabled="!dirty || errors.size > 0" @click="save">Save parts</VxButton>
+      <VxButton :disabled="!dirty || saving" @click="reset">Undo changes</VxButton>
+      <VxButton variant="primary" :loading="saving" :disabled="!dirty || errors.size > 0" @click="save">Save parts</VxButton>
     </div>
   </div>
 </template>

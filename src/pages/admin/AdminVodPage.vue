@@ -82,8 +82,8 @@ onMounted(() => (document.title = `VOD ${props.id} · Admin · vods.vexoulz.net`
 <template>
   <AdminShell :title="`VOD ${id}`">
     <template #actions>
-      <VxButton size="sm" :to="`/vods/${id}`">Watch page</VxButton>
-      <VxButton size="sm" :to="`/admin/jobs?vodId=${id}`">All its jobs</VxButton>
+      <VxButton :to="`/vods/${id}`">Watch page</VxButton>
+      <VxButton :to="`/admin/jobs?vodId=${id}`">All its jobs</VxButton>
     </template>
     <p class="back"><RouterLink to="/admin/vods">← VODs</RouterLink></p>
 
@@ -99,7 +99,7 @@ onMounted(() => (document.title = `VOD ${props.id} · Admin · vods.vexoulz.net`
         <form class="title-row" @submit.prevent="saveTitle">
           <label class="vx-eyebrow" for="vod-title">Title</label>
           <VxInput id="vod-title" v-model="titleDraft" class="title-input" />
-          <VxButton size="sm" type="submit" variant="primary" :loading="titleSaving" :disabled="!titleDraft.trim() || titleDraft.trim() === vod.title">Save</VxButton>
+          <VxButton type="submit" variant="primary" :loading="titleSaving" :disabled="!titleDraft.trim() || titleDraft.trim() === vod.title">Save</VxButton>
         </form>
         <dl class="facts">
           <div><dt>Id</dt><dd class="vx-mono">{{ vod.id }}</dd></div>

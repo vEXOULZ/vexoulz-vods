@@ -59,7 +59,7 @@ onMounted(() => (document.title = 'Audit log · Admin · vods.vexoulz.net'))
 <template>
   <AdminShell title="Audit log">
     <template #actions>
-      <VxButton size="sm" :loading="loading" @click="refresh">Refresh</VxButton>
+      <VxButton :loading="loading" @click="refresh">Refresh</VxButton>
     </template>
     <VxCallout v-if="error" tone="error" title="Couldn't load the audit log">
       {{ error }}

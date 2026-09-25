@@ -55,8 +55,8 @@ async function connectYoutube() {
 <template>
   <AdminShell title="Overview">
     <template #actions>
-      <VxButton size="sm" :loading="loading" @click="refresh">Refresh</VxButton>
-      <VxButton size="sm" variant="primary" to="/admin/jobs?new=1">Start a job</VxButton>
+      <VxButton :loading="loading" @click="refresh">Refresh</VxButton>
+      <VxButton variant="primary" to="/admin/jobs?new=1">Start a job</VxButton>
     </template>
 
     <VxCallout v-if="error" tone="error" title="Couldn't load the archive's status">
@@ -74,7 +74,7 @@ async function connectYoutube() {
           <div class="vx-eyebrow">{{ t.name }}</div>
           <div class="tile-main"><VxStatusDot :status="t.status" />{{ t.text }}</div>
           <div v-if="t.sub" class="vx-muted small">{{ t.sub }}</div>
-          <VxButton v-if="t.action === 'connect'" size="sm" @click="connectYoutube">Connect YouTube</VxButton>
+          <VxButton v-if="t.action === 'connect'" @click="connectYoutube">Connect YouTube</VxButton>
         </div>
       </div>
 

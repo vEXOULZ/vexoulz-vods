@@ -107,8 +107,8 @@ async function save() {
         </div>
         <VxCheckbox v-model="r.restricted" class="restricted">Cut (DMCA)</VxCheckbox>
         <div class="row-actions">
-          <VxButton size="sm" variant="ghost" icon :label="`Split chapter ${i + 1} in two`" @click="split(r)">⋮</VxButton>
-          <VxButton size="sm" variant="ghost" icon :label="`Remove chapter ${i + 1}`" @click="remove(r)">×</VxButton>
+          <VxButton variant="ghost" icon :label="`Split chapter ${i + 1} in two`" @click="split(r)">⋮</VxButton>
+          <VxButton variant="ghost" icon :label="`Remove chapter ${i + 1}`" @click="remove(r)">×</VxButton>
         </div>
         <p v-if="errors.has(r.key)" class="err">{{ errors.get(r.key) }}</p>
       </li>
@@ -122,12 +122,12 @@ async function save() {
     <VxCallout v-if="error" tone="error" title="Couldn't save the chapters">{{ error }}</VxCallout>
 
     <div class="foot">
-      <VxButton size="sm" @click="add">+ Add chapter</VxButton>
-      <VxButton v-if="!sorted" size="sm" variant="ghost" @click="sortRows">Sort by start</VxButton>
+      <VxButton @click="add">+ Add chapter</VxButton>
+      <VxButton v-if="!sorted" variant="ghost" @click="sortRows">Sort by start</VxButton>
       <span class="spacer" />
       <label class="lock"><VxSwitch id="chapters-locked" v-model="locked" /><span>Lock (automatic updates skip this VOD)</span></label>
-      <VxButton size="sm" :disabled="!dirty || saving" @click="reset">Undo changes</VxButton>
-      <VxButton size="sm" variant="primary" :loading="saving" :disabled="!dirty || errors.size > 0" @click="save">Save chapters</VxButton>
+      <VxButton :disabled="!dirty || saving" @click="reset">Undo changes</VxButton>
+      <VxButton variant="primary" :loading="saving" :disabled="!dirty || errors.size > 0" @click="save">Save chapters</VxButton>
     </div>
   </div>
 </template>

@@ -34,7 +34,7 @@ async function signOut() {
 <template>
   <VxSiteShell site="vods" :nav="nav" sky="dim">
     <template #account>
-      <VxButton size="sm" variant="ghost" :loading="leaving" @click="signOut">Log out</VxButton>
+      <VxButton variant="ghost" :loading="leaving" @click="signOut">Log out</VxButton>
     </template>
     <div class="head">
       <div class="vx-eyebrow">Admin</div>

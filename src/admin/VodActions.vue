@@ -71,25 +71,25 @@ function remove() {
     <div class="group">
       <div class="vx-eyebrow">Metadata</div>
       <div class="btns">
-        <VxButton size="sm" :loading="busy === 'chapters'" @click="run('chapters', () => admin.refetchChapters(vod.id, forceChapters))">Re-fetch chapters from Twitch</VxButton>
+        <VxButton :loading="busy === 'chapters'" @click="run('chapters', () => admin.refetchChapters(vod.id, forceChapters))">Re-fetch chapters from Twitch</VxButton>
         <VxCheckbox v-if="vod.chaptersLocked" v-model="forceChapters" class="small">replace hand edits (locked)</VxCheckbox>
-        <VxButton size="sm" :loading="busy === 'chat'" @click="run('chat', () => admin.saveChat(vod.id))">Save chat again</VxButton>
-        <VxButton size="sm" :loading="busy === 'duration'" @click="run('duration', () => admin.refreshDuration(vod.id), () => emit('changed'))">Refresh duration</VxButton>
+        <VxButton :loading="busy === 'chat'" @click="run('chat', () => admin.saveChat(vod.id))">Save chat again</VxButton>
+        <VxButton :loading="busy === 'duration'" @click="run('duration', () => admin.refreshDuration(vod.id), () => emit('changed'))">Refresh duration</VxButton>
       </div>
     </div>
     <div class="group">
       <div class="vx-eyebrow">YouTube</div>
       <div class="btns">
-        <VxSelect v-if="hasLive" v-model="descType" :options="TYPES" size="sm" width="96px" />
-        <VxButton size="sm" :loading="busy === 'describe'" @click="run('describe', () => admin.updateDescriptions(vod.id, descType))">Update descriptions</VxButton>
-        <VxButton size="sm" :loading="busy === 'reupload'" @click="ruOpen = true">Re-upload a part…</VxButton>
-        <VxButton size="sm" :loading="busy === 'download'" @click="dlOpen = true">Download and upload again…</VxButton>
+        <VxSelect v-if="hasLive" v-model="descType" :options="TYPES" width="96px" />
+        <VxButton :loading="busy === 'describe'" @click="run('describe', () => admin.updateDescriptions(vod.id, descType))">Update descriptions</VxButton>
+        <VxButton :loading="busy === 'reupload'" @click="ruOpen = true">Re-upload a part…</VxButton>
+        <VxButton :loading="busy === 'download'" @click="dlOpen = true">Download and upload again…</VxButton>
       </div>
     </div>
     <div class="group">
       <div class="vx-eyebrow">Danger</div>
       <div class="btns">
-        <VxButton size="sm" variant="danger" :loading="busy === 'delete'" @click="delConfirm = ''; delOpen = true">Delete from the archive…</VxButton>
+        <VxButton variant="danger" :loading="busy === 'delete'" @click="delConfirm = ''; delOpen = true">Delete from the archive…</VxButton>
       </div>
     </div>
 

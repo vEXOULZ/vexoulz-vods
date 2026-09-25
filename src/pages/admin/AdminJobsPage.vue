@@ -106,14 +106,14 @@ onMounted(async () => {
 <template>
   <AdminShell title="Jobs">
     <template #actions>
-      <VxButton size="sm" :loading="loading" @click="refresh">Refresh</VxButton>
-      <VxButton size="sm" variant="primary" @click="starting = true">Start a job</VxButton>
+      <VxButton :loading="loading" @click="refresh">Refresh</VxButton>
+      <VxButton variant="primary" @click="starting = true">Start a job</VxButton>
     </template>
 
     <div class="filters">
       <VxTabs v-model="tab" :options="tabs" label="Job state" class="tabs" />
       <div class="row">
-        <VxSelect v-model="kindModel" :options="kindOptions" placeholder="All kinds" size="sm" width="160px" />
+        <VxSelect v-model="kindModel" :options="kindOptions" placeholder="All kinds" width="160px" />
         <VxInput v-model="vodDraft" class="vod" placeholder="VOD id" mono clearable />
       </div>
     </div>

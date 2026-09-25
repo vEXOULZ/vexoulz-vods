@@ -108,12 +108,12 @@ async function run(name: string, action: () => Promise<{ msg: string; jobId?: nu
         </div>
       </template>
       <div class="foot">
-        <VxButton size="sm" :loading="busy === 'fill'" @click="run('fill', () => admin.captureEmotes(vodId))">{{ data ? 'Fill missing sets' : 'Capture emotes' }}</VxButton>
-        <VxButton v-if="data" size="sm" variant="danger" :loading="busy === 'force'" @click="confirmForce = true">Replace with today's sets…</VxButton>
-        <VxButton v-if="data && !data.global_emotes" size="sm" :loading="busy === 'backfill'" @click="run('backfill', () => admin.backfillGlobalEmotes([vodId]))">
+        <VxButton :loading="busy === 'fill'" @click="run('fill', () => admin.captureEmotes(vodId))">{{ data ? 'Fill missing sets' : 'Capture emotes' }}</VxButton>
+        <VxButton v-if="data" variant="danger" :loading="busy === 'force'" @click="confirmForce = true">Replace with today's sets…</VxButton>
+        <VxButton v-if="data && !data.global_emotes" :loading="busy === 'backfill'" @click="run('backfill', () => admin.backfillGlobalEmotes([vodId]))">
           Backfill global sets
         </VxButton>
-        <VxButton size="sm" variant="ghost" :loading="loading" @click="load">Reload</VxButton>
+        <VxButton variant="ghost" :loading="loading" @click="load">Reload</VxButton>
       </div>
     </template>
 

@@ -129,7 +129,7 @@ function onBlur(e: FocusEvent) {
           <span :class="{ 'vx-muted': !g.name }">{{ g.name ?? NO_CATEGORY }}</span>
         </li>
       </ul>
-      <VxButton class="cancel" size="sm" variant="ghost" icon label="Cancel" @click="close">×</VxButton>
+      <VxButton class="cancel" variant="ghost" icon label="Cancel" @click="close">×</VxButton>
     </template>
   </div>
 </template>

@@ -56,18 +56,18 @@ async function save() {
           placeholder="Drive file id or link"
           @change="r.id = driveId(($event.target as HTMLInputElement).value)"
         />
-        <VxSelect v-model="r.type" :options="TYPES" size="sm" width="88px" />
-        <VxButton v-if="r.id" size="sm" variant="ghost" :href="`https://drive.google.com/file/d/${encodeURIComponent(r.id)}/view`" external>Open ↗</VxButton>
-        <VxButton size="sm" variant="ghost" icon :label="`Remove file ${i + 1}`" @click="rows = rows.filter((x) => x !== r)">×</VxButton>
+        <VxSelect v-model="r.type" :options="TYPES" width="88px" />
+        <VxButton v-if="r.id" variant="ghost" :href="`https://drive.google.com/file/d/${encodeURIComponent(r.id)}/view`" external>Open ↗</VxButton>
+        <VxButton variant="ghost" icon :label="`Remove file ${i + 1}`" @click="rows = rows.filter((x) => x !== r)">×</VxButton>
         <p v-if="errors.has(r.key)" class="err">{{ errors.get(r.key) }}</p>
       </li>
     </ol>
     <VxCallout v-if="error" tone="error" title="Couldn't save the Drive files">{{ error }}</VxCallout>
     <div class="foot">
-      <VxButton size="sm" @click="rows.push(newDrive())">+ Add file</VxButton>
+      <VxButton @click="rows.push(newDrive())">+ Add file</VxButton>
       <span class="spacer" />
-      <VxButton size="sm" :disabled="!dirty || saving" @click="reset">Undo changes</VxButton>
-      <VxButton size="sm" variant="primary" :loading="saving" :disabled="!dirty || errors.size > 0" @click="save">Save files</VxButton>
+      <VxButton :disabled="!dirty || saving" @click="reset">Undo changes</VxButton>
+      <VxButton variant="primary" :loading="saving" :disabled="!dirty || errors.size > 0" @click="save">Save files</VxButton>
     </div>
   </div>
 </template>

@@ -100,7 +100,7 @@ onMounted(() => (document.title = 'VODs · Admin · vods.vexoulz.net'))
 <template>
   <AdminShell title="VODs">
     <template #actions>
-      <VxButton size="sm" variant="primary" @click="addId = ''; addOpen = true">Add from Twitch</VxButton>
+      <VxButton variant="primary" @click="addId = ''; addOpen = true">Add from Twitch</VxButton>
     </template>
 
     <div class="search">

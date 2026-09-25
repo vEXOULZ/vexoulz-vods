@@ -108,11 +108,11 @@ onMounted(() => (document.title = `Job ${props.id} · Admin · vods.vexoulz.net`
 <template>
   <AdminShell :title="`Job ${id}`">
     <template v-if="job" #actions>
-      <VxButton v-if="actions?.resume" size="sm" variant="primary" :loading="busy === 'resume'" @click="act('resume', () => admin.resume(jobId))">Resume</VxButton>
-      <VxButton v-if="actions?.resume" size="sm" :loading="busy === 'once'" @click="act('once', () => admin.resume(jobId, true))">Run one step</VxButton>
-      <VxButton v-if="actions?.pause" size="sm" :loading="busy === 'pause'" @click="act('pause', () => admin.pause(jobId))">Pause</VxButton>
-      <VxButton v-if="actions?.retry" size="sm" variant="primary" :loading="busy === 'retry'" @click="act('retry', () => admin.retry(jobId))">Retry</VxButton>
-      <VxButton v-if="actions?.cancel" size="sm" variant="danger" :loading="busy === 'cancel'" @click="confirmCancel = true">Cancel</VxButton>
+      <VxButton v-if="actions?.resume" variant="primary" :loading="busy === 'resume'" @click="act('resume', () => admin.resume(jobId))">Resume</VxButton>
+      <VxButton v-if="actions?.resume" :loading="busy === 'once'" @click="act('once', () => admin.resume(jobId, true))">Run one step</VxButton>
+      <VxButton v-if="actions?.pause" :loading="busy === 'pause'" @click="act('pause', () => admin.pause(jobId))">Pause</VxButton>
+      <VxButton v-if="actions?.retry" variant="primary" :loading="busy === 'retry'" @click="act('retry', () => admin.retry(jobId))">Retry</VxButton>
+      <VxButton v-if="actions?.cancel" variant="danger" :loading="busy === 'cancel'" @click="confirmCancel = true">Cancel</VxButton>
     </template>
 
     <p class="back"><RouterLink to="/admin/jobs">← All jobs</RouterLink></p>
