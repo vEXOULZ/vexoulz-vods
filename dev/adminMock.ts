@@ -12,13 +12,17 @@ const GROUPS: Record<string, State[]> = {
   active: ['queued', 'running', 'paused'],
   finished: ['done', 'failed', 'cancelled'],
 }
+// Same kinds and steps as the worker (twitch-archive README, "Job kinds").
 const KINDS: Record<string, { steps: string[]; manualSteps: string[] }> = {
-  archive: { steps: ['vod', 'capture', 'finalize', 'emotes', 'chat', 'chapters', 'split', 'upload', 'describe'], manualSteps: [] },
-  download: { steps: ['download', 'split', 'upload'], manualSteps: [] },
-  reupload: { steps: ['split', 'upload', 'describe'], manualSteps: ['upload'] },
+  archive: { steps: ['capture', 'finalize', 'chapters', 'chat', 'emotes', 'split', 'upload', 'describe', 'cleanup'], manualSteps: [] },
+  download: { steps: ['ensure_source', 'chapters', 'split', 'upload', 'describe', 'cleanup'], manualSteps: [] },
+  reupload: { steps: ['ensure_source', 'split', 'upload', 'describe', 'cleanup'], manualSteps: ['upload'] },
+  dmca: { steps: ['ensure_source', 'dmca_edit', 'split', 'upload', 'describe', 'cleanup'], manualSteps: ['upload'] },
+  chat: { steps: ['chat'], manualSteps: [] },
   chapters: { steps: ['chapters'], manualSteps: [] },
   emotes: { steps: ['emotes'], manualSteps: [] },
-  dmca: { steps: ['mute', 'split', 'upload'], manualSteps: ['upload'] },
+  describe: { steps: ['describe'], manualSteps: [] },
+  global_emotes_backfill: { steps: ['global_emotes_backfill'], manualSteps: [] },
 }
 
 interface Job {
@@ -130,7 +134,66 @@ function send(res: ServerResponse, status: number, data?: unknown, headers: Reco
 const fail = (res: ServerResponse, status: number, msg: string) => send(res, status, { error: true, msg })
 const ok = (res: ServerResponse, msg: string, job?: Job) => send(res, 200, { error: false, msg, jobId: job?.id })
 
-export function adminMock(base = '/backend-admin'): Plugin {
+// ---- VODs: real ones from the public archive API, edited in memory ----
+type Json = Record<string, any>
+const vods = new Map<string, Json>()
+const deleted = new Set<string>()
+const locked = new Set<string>()
+const emoteRows = new Map<string, Json | null>()
+const audit: Json[] = []
+let auditId = 0
+
+async function publicJson(api: string, path: string): Promise<unknown> {
+  const res = await fetch(`${api}${path}`)
+  if (!res.ok) throw new Error(`public API ${res.status}`)
+  return res.json()
+}
+
+async function vodOf(api: string, id: string): Promise<Json | null> {
+  if (!id || deleted.has(id)) return null
+  if (!vods.has(id)) {
+    try {
+      vods.set(id, (await publicJson(api, `/vods/${encodeURIComponent(id)}`)) as Json)
+    } catch {
+      return null
+    }
+  }
+  return vods.get(id)!
+}
+
+const adminVod = (v: Json) => ({
+  ...v,
+  chaptersLocked: locked.has(String(v.id)),
+  jobs: jobs.filter((j) => j.vodId === v.id).slice(0, 20).map(json),
+})
+
+const hms = (s: number) => [Math.floor(s / 3600), Math.floor(s / 60) % 60, Math.floor(s % 60)].map((n) => String(n).padStart(2, '0')).join(':')
+const secondsOf = (hhmmss: unknown) => String(hhmmss ?? '0').split(':').reduce((t, p) => t * 60 + Number(p), 0)
+
+/** Same checks as the worker's vod_edits.chapters. */
+function checkChapters(items: unknown, duration: number): Json[] {
+  if (!Array.isArray(items)) throw new Error('chapters must be a list')
+  let prevStart: number | null = null
+  let prevEnd: number | null = null
+  return items.map((c: Json, i) => {
+    const where = `chapters[${i}]`
+    const start = Number(c.start), length = Number(c.length)
+    if (!(start >= 0)) throw new Error(`${where}.start must be a number of seconds >= 0`)
+    if (!(length > 0)) throw new Error(`${where}.length must be a number of seconds > 0`)
+    if (prevStart != null && start < prevStart) throw new Error(`${where} starts before chapters[${i - 1}]; sort chapters by start`)
+    if (prevEnd != null && start < prevEnd - 0.001) throw new Error(`${where} starts at ${start}s, inside chapters[${i - 1}] (which ends at ${prevEnd}s)`)
+    if (duration > 0 && start + length > duration + 1) throw new Error(`${where} ends at ${start + length}s, after the end of the VOD (${duration}s)`)
+    prevStart = start
+    prevEnd = start + length
+    const t = (c.imageTemplate as string | null) ?? null
+    return {
+      gameId: c.gameId ?? null, name: c.name ?? null, image: t ? t.replace('{width}', '40').replace('{height}', '53') : null,
+      imageTemplate: t, duration: hms(start), start, end: length, length, restricted: !!c.restricted,
+    }
+  })
+}
+
+export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vexoulz.net/backend'): Plugin {
   return {
     name: 'vods-admin-mock',
     apply: 'serve',
@@ -171,8 +234,18 @@ export function adminMock(base = '/backend-admin'): Plugin {
           }
         }
 
-        if (!s) return fail(res, 401, 'Not logged in')
-        if (method !== 'GET' && req.headers['x-csrf-token'] !== s.csrf) return fail(res, 403, 'Bad CSRF token')
+        // The worker answers 403 for both a missing and an expired session.
+        if (!s) return fail(res, 403, 'Session expired; log in again')
+        if (method !== 'GET' && req.headers['x-csrf-token'] !== s.csrf) return fail(res, 403, 'Missing or wrong X-CSRF-Token')
+        const b: Json = method === 'GET' ? {} : await body(req)
+        if (method !== 'GET') {
+          res.on('finish', () => {
+            if (res.statusCode >= 400) return
+            const am = /\/admin\/(vods|jobs)\/([^/]+)/.exec(path)
+            const target = am ? `${am[1] === 'vods' ? 'vod' : 'job'}:${am[2]}` : b.vodId ? `vod:${b.vodId}` : null
+            audit.unshift({ id: ++auditId, at: iso(), actor: 'password', action: `${method} ${path.replace(/\/\d+/g, '/{id}')}`, target, detail: Object.keys(b).length ? b : null })
+          })
+        }
 
         if (path === '/admin/health' && method === 'GET')
           return send(res, 200, {
@@ -198,7 +271,6 @@ export function adminMock(base = '/backend-admin'): Plugin {
           return send(res, 200, { counts: counts(), data: data.map(json) })
         }
         if (path === '/admin/jobs' && method === 'POST') {
-          const b = await body(req)
           const kind = String(b.kind ?? '')
           if (!KINDS[kind]) return fail(res, 400, `Unknown kind ${kind}`)
           const steps = KINDS[kind]!.steps
@@ -218,7 +290,6 @@ export function adminMock(base = '/backend-admin'): Plugin {
           const action = m[2]
           if (!action && method === 'GET') return send(res, 200, json(job))
           if (!action && method === 'PATCH') {
-            const b = await body(req)
             if ('pauseBefore' in b) job.pauseBefore = (b.pauseBefore as string[] | null) ?? null
             if ('pauseNext' in b) job.pauseNext = !!b.pauseNext
             return send(res, 200, json(job))
@@ -237,7 +308,6 @@ export function adminMock(base = '/backend-admin'): Plugin {
           }
           if (action === 'resume') {
             if (job.state !== 'paused') return fail(res, 409, `Job is ${job.state}; only paused jobs can be resumed`)
-            const b = await body(req)
             job.state = 'queued'
             job.pauseNext = !!b.once
             log(job, 'Resumed')
@@ -255,6 +325,88 @@ export function adminMock(base = '/backend-admin'): Plugin {
             job.state = 'cancelled'
             log(job, 'Cancelled', 'warning')
             return ok(res, `Job ${job.id} cancelled`, job)
+          }
+        }
+        // ---- VODs ----
+        const vm = /^\/admin\/vods\/([^/]+)(?:\/(\w+))?$/.exec(path)
+        if (vm) {
+          const id = decodeURIComponent(vm[1]!)
+          const vod = await vodOf(publicApi, id)
+          if (!vod) return fail(res, 404, 'No Vod Data')
+          const part = vm[2]
+          try {
+            if (!part && method === 'GET') return send(res, 200, adminVod(vod))
+            if (!part && method === 'PATCH') {
+              if (typeof b.title !== 'string' || !b.title.trim()) return fail(res, 400, 'title must be a non-empty string')
+              vod.title = b.title.trim()
+              return send(res, 200, adminVod(vod))
+            }
+            if (part === 'chapters' && method === 'PUT') {
+              if (typeof b.locked !== 'boolean') return fail(res, 400, 'locked must be true or false')
+              vod.chapters = checkChapters(b.chapters, Number(vod.duration_seconds) || secondsOf(vod.duration))
+              if (b.locked) locked.add(id)
+              else locked.delete(id)
+              return send(res, 200, adminVod(vod))
+            }
+            if (part === 'youtube' && method === 'PUT') {
+              const old = new Map<unknown, Json>(((vod.youtube as Json[]) ?? []).map((y) => [y.id, y]))
+              vod.youtube = ((b.youtube as Json[]) ?? []).map((y) => ({
+                id: y.id, type: y.type, duration: y.duration ?? old.get(y.id)?.duration ?? null, part: y.part,
+                thumbnail_url: old.get(y.id)?.thumbnail_url ?? `https://i.ytimg.com/vi/${y.id}/mqdefault.jpg`,
+              }))
+              return send(res, 200, adminVod(vod))
+            }
+            if (part === 'drive' && method === 'PUT') {
+              vod.drive = ((b.drive as Json[]) ?? []).map((d) => ({ id: d.id, type: d.type }))
+              return send(res, 200, adminVod(vod))
+            }
+            if (part === 'emotes' && method === 'GET') {
+              if (!emoteRows.has(id)) {
+                const page = (await publicJson(publicApi, `/emotes?vod_id=${encodeURIComponent(id)}&$limit=1`)) as { data: Json[] }
+                emoteRows.set(id, page.data[0] ?? null)
+              }
+              return send(res, 200, emoteRows.get(id))
+            }
+          } catch (e) {
+            return fail(res, 400, (e as Error).message)
+          }
+        }
+        if (path === '/admin/twitch/games') {
+          const q = (url.searchParams.get('query') ?? '').trim().toLowerCase()
+          if (!q) return fail(res, 400, 'Missing parameter: query')
+          // Stand-in for Helix category search: the archive's own games.
+          const games = (await publicJson(publicApi, '/v1/games-played')) as Json[]
+          return send(res, 200, games
+            .filter((g) => g.gameId && String(g.name).toLowerCase().includes(q))
+            .slice(0, 10)
+            .map((g) => ({ gameId: g.gameId, name: g.name, imageTemplate: g.imageTemplate ?? null })))
+        }
+        if (path === '/admin/audit') {
+          const before = Number(url.searchParams.get('before')) || Infinity
+          const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 500)
+          return send(res, 200, { data: audit.filter((a) => (a.id as number) < before).slice(0, limit) })
+        }
+
+        // ---- the worker's VOD routes: each starts a job ----
+        const vodId = b.vodId ? String(b.vodId) : ''
+        const start = (kind: string, msg: string) => ok(res, msg, add(kind, vodId || null, 'queued', 0, 0, { payload: { ...b } }))
+        if (method === 'POST' || method === 'DELETE') {
+          const needsVod = ['/admin/chapters', '/admin/emotes', '/admin/logs', '/admin/duration', '/admin/youtube/parts', '/admin/download', '/admin/reupload', '/admin/delete']
+          if (needsVod.includes(path) && !(await vodOf(publicApi, vodId))) return fail(res, 404, 'No Vod Data')
+          switch (path) {
+            case '/admin/chapters': return start('chapters', `Saving Chapters for ${vodId}`)
+            case '/admin/emotes': return start('emotes', b.force ? 'Saving emotes (overwriting)..' : 'Saving emotes..')
+            case '/admin/emotes/backfill': return start('global_emotes_backfill', 'Backfilling global emotes..')
+            case '/admin/logs': return start('chat', 'Getting logs..')
+            case '/admin/youtube/parts': return start('describe', `Updating YouTube descriptions for ${vodId}`)
+            case '/admin/download': return start('download', 'Starting download..')
+            case '/admin/reupload': return start('reupload', `Re-uploading ${vodId} part ${b.part}..`)
+            case '/admin/hls/download': return start('archive', `Downloading ${vodId} via HLS..`)
+            case '/admin/generate/vod': return start('chapters', `Created vod ${vodId}`)
+            case '/admin/duration': return send(res, 200, { error: false, msg: 'Saved duration!', duration: (await vodOf(publicApi, vodId))!.duration })
+            case '/admin/delete':
+              deleted.add(vodId)
+              return send(res, 200, { error: false, msg: `Deleted ${vodId} (vod, logs, emotes, games)` })
           }
         }
         return fail(res, 404, 'Not in the dev mock')

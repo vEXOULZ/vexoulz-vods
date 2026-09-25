@@ -48,6 +48,12 @@ watch(jobId, () => {
 const actions = computed(() => (job.value ? jobActions(job.value) : null))
 const steps = computed(() => (job.value ? stepStates(job.value) : []))
 const progress = computed(() => [...events.value].reverse().find((e) => e.progress)?.progress ?? null)
+/** Log lines to show: progress reports only as the newest one of each unbroken run (uploads report every percent). */
+const logLines = computed(() =>
+  events.value.filter((e, i, all) => !e.progress || !all[i + 1]?.progress || all[i + 1]!.step !== e.step),
+)
+const progressText = (p: { done: number; total: number; unit: string }) =>
+  p.unit === 'percent' ? `${Math.round(p.done)}%` : p.unit === 'bytes' ? `${(p.done / 1e9).toFixed(2)} / ${(p.total / 1e9).toFixed(2)} GB` : `${p.done}/${p.total} ${p.unit}`
 const progressStep = computed(() => [...events.value].reverse().find((e) => e.progress)?.step ?? null)
 
 const busy = ref<string | null>(null)
@@ -84,7 +90,7 @@ const payloadText = computed(() => (job.value && Object.keys(job.value.payload ?
 const logBox = ref<HTMLElement | null>(null)
 const follow = ref(true)
 watch(
-  () => events.value.length,
+  () => logLines.value.length,
   () => {
     const el = logBox.value
     if (el && follow.value) requestAnimationFrame(() => (el.scrollTop = el.scrollHeight))
@@ -127,7 +133,7 @@ onMounted(() => (document.title = `Job ${props.id} · Admin · vods.vexoulz.net`
           <div>
             <dt>VOD</dt>
             <dd class="vx-mono">
-              <RouterLink v-if="job.vodId" :to="`/vods/${job.vodId}`">{{ job.vodId }}</RouterLink><span v-else>—</span>
+              <RouterLink v-if="job.vodId" :to="`/admin/vods/${job.vodId}`">{{ job.vodId }}</RouterLink><span v-else>—</span>
               <RouterLink v-if="job.vodId" class="small" :to="`/admin/jobs?vodId=${job.vodId}`"> · its jobs</RouterLink>
             </dd>
           </div>
@@ -166,8 +172,8 @@ onMounted(() => (document.title = `Job ${props.id} · Admin · vods.vexoulz.net`
             @update:model-value="togglePauseNext"
           >Pause after the current step</VxCheckbox>
           <div v-if="progress && job.state === 'running'" class="progress">
-            <div class="vx-mono small">{{ progressStep ?? 'progress' }} · {{ progress.done }}/{{ progress.total }} {{ progress.unit }}</div>
-            <VxProgress :value="progress.done" :max="progress.total" :label="`${progressStep ?? 'Progress'}: ${progress.done}/${progress.total} ${progress.unit}`" />
+            <div class="vx-mono small">{{ progressStep ?? 'progress' }} · {{ progressText(progress) }}</div>
+            <VxProgress :value="progress.done" :max="progress.total" :label="`${progressStep ?? 'Progress'}: ${progressText(progress)}`" />
           </div>
           <template v-if="payloadText">
             <h2 class="vx-eyebrow">Payload</h2>
@@ -180,7 +186,7 @@ onMounted(() => (document.title = `Job ${props.id} · Admin · vods.vexoulz.net`
           <div ref="logBox" class="log vx-panel vx-mono" role="log" aria-live="polite" @scroll="onLogScroll">
             <p v-if="eventsError" class="vx-muted">{{ eventsError }}</p>
             <p v-else-if="!events.length" class="vx-muted">No log lines yet.</p>
-            <div v-for="e in events" :key="e.seq" class="line" :class="`is-${e.level}`">
+            <div v-for="e in logLines" :key="e.seq" class="line" :class="`is-${e.level}`">
               <span class="t" :title="stamp(e.at)">{{ time(e.at) }}</span>
               <span v-if="e.step" class="s">{{ e.step }}</span>
               <span class="m">{{ e.message }}</span>

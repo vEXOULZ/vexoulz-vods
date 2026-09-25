@@ -42,11 +42,13 @@ FFZ). The game dropdown comes from the archive's `/v1/games-played` and filters 
 
 ## Admin (`/admin`)
 Archive admin: status overview, the job queue (filter, start, pause/resume/retry/cancel, pause-before steps, live
-log). It talks to twitch-archive's worker admin API at `/backend-admin` on the site's origin (`VITE_ADMIN_API`), with
+log), VOD editing (title, chapters with Twitch category search and a lock, YouTube and Drive lists, saved emotes,
+re-fetch / re-upload / delete actions, adding VODs the monitor missed) and the audit log. It talks to twitch-archive's worker admin API at `/backend-admin` on the site's origin (`VITE_ADMIN_API`), with
 a password session (HttpOnly cookie + CSRF token); the browser never holds an API key. The contract is in
 [docs/admin-api.md](docs/admin-api.md). Not linked from the public pages.
 
-In `npm run dev`, `/backend-admin` is a built-in in-memory mock (`dev/adminMock.ts`, password `admin`) unless
+In `npm run dev`, `/backend-admin` is a built-in in-memory mock (`dev/adminMock.ts`, password `admin`; VODs come
+from the public archive API and edits stay in memory) unless
 `VITE_DEV_ADMIN_TARGET` is set in `.env.local`. The mock is never part of a build.
 
 ## Config

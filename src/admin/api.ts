@@ -1,3 +1,5 @@
+import type { RawDrive, RawEmoteSets, RawVod } from '@vexoulz/vods-core'
+
 // Client for twitch-archive's worker admin API, as described in docs/admin-api.md. The browser holds no key: a
 // password login gives it an HttpOnly session cookie, and every change carries the session's CSRF token.
 
@@ -71,6 +73,53 @@ export interface LaunchJob {
   fromStep?: string
   pauseBefore?: string[]
   paused?: boolean
+}
+
+/** GET /admin/vods/{id}: the VOD as the public API renders it, plus what only admins need. */
+export interface AdminVod extends RawVod {
+  chaptersLocked: boolean
+  /** Recent jobs for this VOD, newest first. */
+  jobs: Job[]
+}
+
+/** A chapter as PUT /admin/vods/{id}/chapters takes it. Times in seconds; `length`, not an end time. */
+export interface ChapterEdit {
+  name: string | null
+  gameId: string | null
+  imageTemplate?: string | null
+  start: number
+  length: number
+  restricted: boolean
+}
+
+export interface YoutubeEdit {
+  id: string
+  type: 'vod' | 'live'
+  part: number
+  /** Seconds; omit to keep what the archive has. */
+  duration?: number
+}
+
+export interface TwitchGame {
+  gameId: string
+  name: string
+  imageTemplate: string | null
+}
+
+export interface AdminEmotes extends RawEmoteSets {
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface AuditEntry {
+  id: number
+  at: string
+  actor: 'password' | 'api-key'
+  /** "METHOD /route/{param}". */
+  action: string
+  /** "vod:<id>", "job:<id>" or null. */
+  target: string | null
+  detail: unknown
 }
 
 export class AdminApiError extends Error {
@@ -186,7 +235,82 @@ export class AdminClient {
   updateJob(id: number, patch: { pauseBefore?: string[] | null; pauseNext?: boolean }): Promise<Job> {
     return this.request('PATCH', `/admin/jobs/${id}`, patch)
   }
+
+  // ---- VODs ----
+  vod(id: string, signal?: AbortSignal): Promise<AdminVod> {
+    return this.request('GET', `/admin/vods/${enc(id)}`, undefined, signal)
+  }
+  updateVod(id: string, patch: { title?: string }): Promise<AdminVod> {
+    return this.request('PATCH', `/admin/vods/${enc(id)}`, patch)
+  }
+  saveChapters(id: string, chapters: ChapterEdit[], locked: boolean): Promise<AdminVod> {
+    return this.request('PUT', `/admin/vods/${enc(id)}/chapters`, { chapters, locked })
+  }
+  saveYoutube(id: string, youtube: YoutubeEdit[]): Promise<AdminVod> {
+    return this.request('PUT', `/admin/vods/${enc(id)}/youtube`, { youtube })
+  }
+  saveDrive(id: string, drive: RawDrive[]): Promise<AdminVod> {
+    return this.request('PUT', `/admin/vods/${enc(id)}/drive`, { drive })
+  }
+  vodEmotes(id: string, signal?: AbortSignal): Promise<AdminEmotes | null> {
+    return this.request('GET', `/admin/vods/${enc(id)}/emotes`, undefined, signal)
+  }
+  searchGames(query: string, signal?: AbortSignal): Promise<TwitchGame[]> {
+    return this.request('GET', `/admin/twitch/games?query=${encodeURIComponent(query)}`, undefined, signal)
+  }
+
+  // ---- VOD jobs and fixes (the worker's existing routes) ----
+  /** Chapters from Twitch; `force` also replaces chapters edited by hand. */
+  refetchChapters(vodId: string, force = false): Promise<ActionResult> {
+    return this.request('POST', '/admin/chapters', { vodId, ...(force ? { force } : {}) })
+  }
+  /** Fill the VOD's missing emote sets; `force` replaces the saved ones with today's. */
+  captureEmotes(vodId: string, force = false): Promise<ActionResult> {
+    return this.request('POST', '/admin/emotes', { vodId, ...(force ? { force } : {}) })
+  }
+  saveChat(vodId: string): Promise<ActionResult> {
+    return this.request('POST', '/admin/logs', { vodId })
+  }
+  refreshDuration(vodId: string): Promise<ActionResult & { duration?: string }> {
+    return this.request('POST', '/admin/duration', { vodId })
+  }
+  /** Download again (whole VOD or a part range), split and upload. */
+  redownload(vodId: string, opts: { type?: 'vod' | 'live'; startPart?: number; endPart?: number } = {}): Promise<ActionResult> {
+    return this.request('POST', '/admin/download', { vodId, ...opts })
+  }
+  reuploadPart(vodId: string, part: number, type: 'vod' | 'live' = 'vod'): Promise<ActionResult> {
+    return this.request('POST', '/admin/reupload', { vodId, part, type })
+  }
+  updateDescriptions(vodId: string, type: 'vod' | 'live' = 'vod'): Promise<ActionResult> {
+    return this.request('POST', '/admin/youtube/parts', { vodId, type })
+  }
+  /** Removes the VOD with its chat, emotes and game uploads from the archive (not from YouTube). */
+  deleteVod(vodId: string): Promise<ActionResult> {
+    return this.request('DELETE', '/admin/delete', { vodId })
+  }
+  /** A VOD the monitor missed: create it from Twitch and run the whole archive pipeline. */
+  archiveFromTwitch(vodId: string): Promise<ActionResult> {
+    return this.request('POST', '/admin/hls/download', { vodId })
+  }
+  /** Create the VOD row from Twitch (plus its chapters and emotes) without downloading anything. */
+  createFromTwitch(vodId: string): Promise<ActionResult> {
+    return this.request('POST', '/admin/generate/vod', { vodId })
+  }
+  backfillGlobalEmotes(vodIds?: string[]): Promise<ActionResult> {
+    return this.request('POST', '/admin/emotes/backfill', vodIds?.length ? { vodIds } : {})
+  }
+
+  // ---- audit ----
+  audit(q: { before?: number; limit?: number } = {}, signal?: AbortSignal): Promise<{ data: AuditEntry[] }> {
+    const params = new URLSearchParams()
+    if (q.before) params.set('before', String(q.before))
+    if (q.limit) params.set('limit', String(q.limit))
+    const qs = params.toString()
+    return this.request('GET', `/admin/audit${qs ? `?${qs}` : ''}`, undefined, signal)
+  }
 }
+
+const enc = encodeURIComponent
 
 /** What an admin can do with a job in its state (mirrors the worker's rules). */
 export function jobActions(job: Pick<Job, 'state'>) {

@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => {
   // which git ignores), otherwise the in-memory mock in dev/adminMock.ts.
   const adminTarget = env.VITE_DEV_ADMIN_TARGET
   return {
-    plugins: [vue(), ...(adminTarget ? [] : [adminMock()])],
+    plugins: [vue(), ...(adminTarget ? [] : [adminMock('/backend-admin', `${env.VITE_DEV_API_TARGET || 'https://vods.vexoulz.net'}/backend`)])],
     resolve: {
       alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
     },

@@ -12,6 +12,8 @@ const router = useRouter()
 const nav = computed<NavItem[]>(() => [
   { label: 'Overview', to: '/admin', current: route.path === '/admin' },
   { label: 'Jobs', to: '/admin/jobs', current: route.path.startsWith('/admin/jobs') },
+  { label: 'VODs', to: '/admin/vods', current: route.path.startsWith('/admin/vods') },
+  { label: 'Audit', to: '/admin/audit', current: route.path === '/admin/audit' },
   { label: 'Site', to: '/vods' },
 ])
 

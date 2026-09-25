@@ -9,7 +9,9 @@ Conventions (as the worker does today): JSON bodies; errors are `{"error": true,
 status; action responses are `{"error": false, "msg": "...", "jobId"?: n}`; job objects are the worker's `_job_json`
 shape. Times are ISO 8601 UTC.
 
-Status of each part: **exists** (works today behind the API key), **new** (needs building).
+All of it is implemented in twitch-archive (worker admin API, from PR #12); the "new" labels below record what
+that PR added. Differences from the first draft: a missing or expired session is `403` (not `401`), and audit
+entries also carry `id` (the `before` cursor). The dev mock (`dev/adminMock.ts`) follows the same contract.
 
 ## 1. Password sessions — new
 

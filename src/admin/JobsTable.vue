@@ -24,7 +24,7 @@ const rows = computed(() => props.jobs.map((j) => ({ ...j, _pos: stepPosition(j)
       <RouterLink :to="`/admin/jobs/${row.id}`">{{ row.id }}</RouterLink>
     </template>
     <template #cell-vodId="{ row }">
-      <RouterLink v-if="row.vodId" :to="`/vods/${row.vodId}`">{{ row.vodId }}</RouterLink>
+      <RouterLink v-if="row.vodId" :to="`/admin/vods/${row.vodId}`">{{ row.vodId }}</RouterLink>
       <span v-else class="vx-muted">—</span>
     </template>
     <template #cell-state="{ row }">
