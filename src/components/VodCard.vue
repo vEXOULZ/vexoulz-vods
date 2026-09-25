@@ -2,7 +2,7 @@
 // One VOD in the list: YouTube thumbnail with duration, fanned game posters (a button: opens the chapters, each a
 // link to that point), chapter strip, and where you stopped (from watch progress) with a bar showing how much
 // you've seen. Thumbnail and title link to the VOD; the posters sit outside those links.
-import { learnGameColors, VxChapterBar, VxLink, VxMenuItem, VxPlaceholder, VxPopover, VxPosters } from '@vexoulz/ui'
+import { gamePalette, learnGameColors, VxChapterBar, VxChip, VxLink, VxMenuItem, VxPlaceholder, VxPopover, VxPosters } from '@vexoulz/ui'
 import { toClock, type Progress, type Vod } from '@vexoulz/vods-core'
 import { computed, ref, watchEffect } from 'vue'
 import { boxArt, gamesWithArt, thumbnailOf } from '@/lib/art'
@@ -10,7 +10,9 @@ import { watchPath } from '@/lib/listQuery'
 
 const props = defineProps<{ vod: Vod; progress?: Progress | null }>()
 
-const games = computed(() => gamesWithArt(props.vod.chapters))
+// One palette for this VOD's posters, chapter strip and chapter list, so similar games get told apart the same way.
+const palette = computed(() => gamePalette(props.vod.chapters.map((c) => c.name)))
+const games = computed(() => gamesWithArt(props.vod.chapters).map((g) => ({ ...g, color: palette.value.get(g.name) })))
 watchEffect(() => learnGameColors(games.value))
 const date = computed(() =>
   props.vod.createdAt.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }),
@@ -42,7 +44,7 @@ watchEffect(() => {
           </span>
           <span class="watched" :style="{ width: `${watched * 100}%` }"></span>
         </template>
-        <VxChapterBar v-if="vod.chapters.length" class="chapters" :chapters="vod.chapters" />
+        <VxChapterBar v-if="vod.chapters.length" class="chapters" :chapters="vod.chapters" :palette="palette" />
       </VxLink>
 
       <VxPopover v-if="games.length" class="posters" width="min(320px, calc(100vw - 24px))" :cap="340">
@@ -65,11 +67,14 @@ watchEffect(() => {
             :key="i"
             :to="c.restricted ? undefined : watchPath(vod, c.start)"
             :disabled="c.restricted"
-            :sub="c.restricted ? 'cut' : toClock(c.start)"
+            :sub="toClock(c.start)"
             @click="close()"
           >
-            <template #lead><VxPosters :games="[{ name: c.name, image: boxArt(c.image) ?? undefined }]" mode="row" :size="24" /></template>
+            <template #lead>
+              <VxPosters :games="[{ name: c.name, image: boxArt(c.image) ?? undefined, color: palette.get(c.name) }]" mode="row" :size="24" />
+            </template>
             {{ c.name }}
+            <template v-if="c.restricted" #trail><VxChip title="Cut from the YouTube uploads">cut</VxChip></template>
           </VxMenuItem>
         </template>
       </VxPopover>

@@ -3,6 +3,7 @@
 // all parts, a controls row (chapters, part picker, copy link, download, theater, shortcuts) and the chat replay.
 // On phones the same controls reflow under the video and chat goes below; nothing is dropped.
 import {
+  gamePalette,
   learnGameColors,
   useToast,
   VxAccountMenu,
@@ -126,7 +127,8 @@ const partOffset = computed(() => props.timeline.locate(time.value).offset)
 const chapters = computed(() => props.timeline.chapters.filter((c) => c.end > range.value.start && c.start < range.value.end))
 const chapter = computed(() => props.timeline.chapterAt(time.value))
 const chapterIdx = computed(() => (chapter.value ? chapters.value.indexOf(chapter.value) : -1))
-const posterGames = computed(() => gamesWithArt(chapters.value))
+const palette = computed(() => gamePalette(props.timeline.chapters.map((c) => c.name)))
+const posterGames = computed(() => gamesWithArt(chapters.value).map((g) => ({ ...g, color: palette.value.get(g.name) })))
 watchEffect(() => learnGameColors(posterGames.value))
 function stepChapter(dir: 1 | -1) {
   const open = chapters.value.filter((c) => !c.restricted)
@@ -236,6 +238,7 @@ useShortcuts(() => shortcuts.value)
             :status="status"
             :part-index="partIndex"
             :part-label="partLabel"
+            :palette="palette"
             @seek="seek"
           />
           <div class="row">
@@ -255,11 +258,14 @@ useShortcuts(() => shortcuts.value)
                     :key="i"
                     :current="i === chapterIdx"
                     :disabled="c.restricted"
-                    :sub="c.restricted ? 'cut' : toClock(c.start)"
+                    :sub="toClock(c.start)"
                     @click="seek(Math.max(c.start, range.start)); close()"
                   >
-                    <template #lead><VxPosters :games="[{ name: c.name, image: boxArt(c.image) ?? undefined }]" mode="row" :size="24" /></template>
+                    <template #lead>
+                      <VxPosters :games="[{ name: c.name, image: boxArt(c.image) ?? undefined, color: palette.get(c.name) }]" mode="row" :size="24" />
+                    </template>
                     {{ c.name }}
+                    <template v-if="c.restricted" #trail><VxChip title="Cut from the YouTube uploads">cut</VxChip></template>
                   </VxMenuItem>
                 </template>
               </VxPopover>

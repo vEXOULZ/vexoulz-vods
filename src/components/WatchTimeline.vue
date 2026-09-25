@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // One bar for the whole VOD (all parts): chapters in their game colour, restricted chapters hatched, parts that
 // can't play hatched red, part labels above. Click, drag or use the arrow keys to seek (VOD seconds).
-import { gameColor } from '@vexoulz/ui'
+import { gamePalette } from '@vexoulz/ui'
 import { toClock, type PartStatus, type Span, type Timeline } from '@vexoulz/vods-core'
 import { computed, ref } from 'vue'
 
@@ -14,6 +14,8 @@ const props = defineProps<{
   partIndex: number
   /** Label for part i (P1, or a game name on the games page). */
   partLabel?: (i: number) => string
+  /** Colours per game (gamePalette of the VOD), shared with the posters. */
+  palette?: Map<string, string>
 }>()
 const emit = defineEmits<{ seek: [t: number] }>()
 
@@ -21,6 +23,7 @@ const len = computed(() => Math.max(1, props.range.end - props.range.start))
 const pct = (t: number) => `${(Math.min(Math.max(t - props.range.start, 0), len.value) / len.value) * 100}%`
 const width = (a: number, b: number) => `${(Math.max(0, Math.min(b, props.range.end) - Math.max(a, props.range.start)) / len.value) * 100}%`
 
+const colors = computed(() => props.palette ?? gamePalette(props.timeline.chapters.map((c) => c.name)))
 const chapters = computed(() => props.timeline.chapters.filter((c) => c.end > props.range.start && c.start < props.range.end))
 const spans = computed(() => props.timeline.partSpans())
 const label = (i: number) => props.partLabel?.(i) ?? `P${i + 1}`
@@ -104,12 +107,13 @@ const shown = computed(() => (dragging.value && hover.value ? hover.value.t : pr
         :key="i"
         class="seg"
         :class="{ cut: c.restricted }"
-        :style="{ left: pct(c.start), width: width(c.start, c.end), '--c': gameColor(c.name) }"
+        :style="{ left: pct(c.start), width: width(c.start, c.end), '--c': colors.get(c.name) }"
       ></span>
       <template v-for="(s, i) in spans" :key="'u' + i">
         <span v-if="bad(status[i])" class="unseg" :style="{ left: pct(s.start), width: width(s.start, s.end) }"></span>
       </template>
       <span v-for="(s, i) in spans.slice(1)" :key="'t' + i" class="tick" :style="{ left: pct(s.start) }"></span>
+      <span class="rest" :style="{ left: pct(shown) }"></span>
       <span class="played" :style="{ width: pct(shown) }"></span>
       <span class="head" :style="{ left: pct(shown) }"></span>
       <span v-if="hover" class="tip vx-mono" :style="{ left: `${hover.x}px` }">
@@ -132,11 +136,14 @@ const shown = computed(() => (dragging.value && hover.value ? hover.value.t : pr
 .plabel:hover { color: var(--vx-ink); }
 .track { position: relative; height: 8px; cursor: pointer; margin: 2px 0 4px; touch-action: none; border-radius: 2px; outline-offset: 4px; }
 .track:hover, .track:focus-visible { height: 10px; margin-top: 1px; margin-bottom: 3px; }
-.seg { position: absolute; top: 0; bottom: 0; border-right: 2px solid rgb(0 0 0 / 0.85); background: color-mix(in srgb, var(--c) 45%, transparent); }
+.seg { position: absolute; top: 0; bottom: 0; border-right: 2px solid rgb(0 0 0 / 0.85); background: var(--c); }
 .seg.cut { background: repeating-linear-gradient(-45deg, rgb(255 255 255 / 0.18) 0 3px, transparent 3px 6px); }
 .unseg { position: absolute; top: 0; bottom: 0; pointer-events: none; background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--vx-bad) 55%, transparent) 0 2px, rgb(0 0 0 / 0.65) 2px 6px); }
 .tick { position: absolute; top: -9px; bottom: -2px; width: 1px; background: var(--vx-muted); pointer-events: none; }
-.played { position: absolute; left: 0; top: 0; bottom: 0; background: var(--vx-accent); opacity: 0.75; pointer-events: none; mix-blend-mode: screen; }
+/* Progress never paints over the chapter colours: what's still ahead is dimmed, and a thin accent line runs under
+   what's been played. */
+.rest { position: absolute; right: 0; top: 0; bottom: 0; background: rgb(0 0 0 / 0.55); pointer-events: none; }
+.played { position: absolute; left: 0; bottom: -4px; height: 2px; background: var(--vx-accent); border-radius: 1px; pointer-events: none; }
 .head { position: absolute; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--vx-accent); box-shadow: 0 0 0 3px rgb(0 0 0 / 0.6); pointer-events: none; }
 .tip {
   position: absolute; bottom: calc(100% + 22px); transform: translateX(-50%); white-space: nowrap; pointer-events: none;
