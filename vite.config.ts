@@ -18,9 +18,10 @@ export default defineConfig(({ mode }) => {
       port: 5175,
       // In production the site and the archive API share an origin (`/backend`). In dev, forward /backend to the
       // public API so the same relative URL works. Override with VITE_DEV_API_TARGET.
+      // Vite matches these by prefix in order, so /backend-admin has to come before /backend.
       proxy: {
-        '/backend': { target: env.VITE_DEV_API_TARGET || 'https://vods.vexoulz.net', changeOrigin: true },
         ...(adminTarget ? { '/backend-admin': { target: adminTarget, changeOrigin: true, rewrite: (p: string) => p.replace(/^\/backend-admin/, '') } } : {}),
+        '/backend': { target: env.VITE_DEV_API_TARGET || 'https://vods.vexoulz.net', changeOrigin: true },
       },
     },
     test: { include: ['tests/**/*.test.ts'] },
