@@ -46,24 +46,11 @@ watchEffect(() => {
       </VxLink>
       <div class="vx-eyebrow">Latest broadcast · {{ relativeDay(vod.createdAt) }}</div>
       <h2 class="title"><VxLink :to="watchPath(vod, progress?.t)">{{ title }}</VxLink></h2>
-      <div class="meta">
-        <VxChip k="streamed">{{ date }}, {{ time }}</VxChip>
-        <VxChip k="length">{{ toClock(vod.duration) }}</VxChip>
-        <VxChip v-if="parts" k="parts">{{ parts }}</VxChip>
-        <VxChip v-if="cut" k="cut" title="Chapters cut from the YouTube uploads">{{ cut }}</VxChip>
-        <VxChip v-if="vod.drive.length" tone="ok">download</VxChip>
-      </div>
-      <div class="actions">
-        <VxLink :to="watchPath(vod, progress?.t)" class="vx-btn is-primary">
-          {{ progress ? `▶ Resume at ${toClock(progress.t)}` : '▶ Watch' }}
-        </VxLink>
-        <VxLink v-if="progress" :to="watchPath(vod, 0)" class="vx-btn">From the start</VxLink>
-      </div>
     </div>
 
-    <div v-if="vod.chapters.length" class="side">
-      <div class="vx-eyebrow">Chapters · {{ vod.chapters.length }}</div>
-      <ol class="chapters">
+    <div class="side">
+      <div v-if="vod.chapters.length" class="vx-eyebrow">Chapters · {{ vod.chapters.length }}</div>
+      <ol v-if="vod.chapters.length" class="chapters">
         <li v-for="(c, i) in vod.chapters" :key="i">
           <VxLink v-if="!c.restricted" :to="watchPath(vod, c.start)" class="chapter">
             <VxPosters :games="[{ name: c.name, image: boxArt(c.image) ?? undefined, color: palette.get(c.name) }]" mode="row" :size="22" />
@@ -79,21 +66,40 @@ watchEffect(() => {
           </span>
         </li>
       </ol>
+      <div class="details">
+        <div class="meta">
+          <VxChip k="streamed">{{ date }}, {{ time }}</VxChip>
+          <VxChip k="length">{{ toClock(vod.duration) }}</VxChip>
+          <VxChip v-if="parts" k="parts">{{ parts }}</VxChip>
+          <VxChip v-if="cut" k="cut" title="Chapters cut from the YouTube uploads">{{ cut }}</VxChip>
+          <VxChip v-if="vod.drive.length" tone="ok">download</VxChip>
+        </div>
+        <div class="actions">
+          <VxLink :to="watchPath(vod, progress?.t)" class="vx-btn is-primary">
+            {{ progress ? `▶ Resume at ${toClock(progress.t)}` : '▶ Watch' }}
+          </VxLink>
+          <VxLink v-if="progress" :to="watchPath(vod, 0)" class="vx-btn">From the start</VxLink>
+        </div>
+      </div>
     </div>
   </article>
 </template>
 
 <style scoped>
-/* Video, title and details on the left; the chapter list beside it, as tall as the left side and scrolling. */
+/* Video and title on the left; chapters, details and buttons beside it. The chapter list takes whatever height the
+   left side leaves and scrolls, so both columns end together. */
 .latest { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 18px; padding: 14px; }
 .main { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.side { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; }
+/* The side column doesn't add height of its own (contain: size): the video column sets it, the chapter list shrinks
+   and scrolls when it's longer, and the details sit at the bottom either way. */
+.side { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; contain: size; }
 .chapters {
   list-style: none; margin: 0; padding: 0; display: grid; align-content: start; gap: 2px;
-  flex: 1 1 0; min-height: 0; overflow-y: auto; scrollbar-width: thin;
+  flex: 0 1 auto; min-height: 3rem; overflow-y: auto; scrollbar-width: thin;
 }
 @container vx-site (max-width: 760px) {
   .latest { grid-template-columns: minmax(0, 1fr); }
+  .side { contain: none; }
   .chapters { flex: none; max-height: 16rem; }
 }
 .thumb { display: block; position: relative; color: inherit; margin-bottom: 4px; }
@@ -109,7 +115,8 @@ watchEffect(() => {
 .title a { color: var(--vx-ink); text-decoration: none; }
 .title a:hover { color: var(--vx-accent); }
 .meta { display: flex; flex-wrap: wrap; gap: 6px; }
-.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.details { display: flex; flex-direction: column; gap: 10px; margin-top: auto; padding-top: 6px; border-top: 1px solid var(--vx-line); }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .chapter {
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px;
   padding: 4px 6px; border-radius: var(--vx-radius-sm); color: var(--vx-ink); text-decoration: none; font-size: 13px;
