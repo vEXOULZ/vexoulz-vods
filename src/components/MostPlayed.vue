@@ -1,18 +1,47 @@
 <script setup lang="ts">
-// The most played games under the latest VOD, as a hand of box-art cards with how many VODs each is in. A card sets
-// the game filter on the list below; the game picker still has every game.
-import { learnGameColors, VxButton, VxPlaceholder, VxSkeleton } from '@vexoulz/ui'
+// The most played games under the latest VOD, as a hand of box-art cards: by how many VODs they're in, or by how long
+// they can be watched in total (the toggle, remembered in this browser). A card sets the game filter on the list
+// below; the game picker still has every game.
+import { learnGameColors, VxButton, VxPlaceholder, VxSegmented, VxSkeleton } from '@vexoulz/ui'
 import type { GamePlayed } from '@vexoulz/vods-core'
-import { computed, watchEffect } from 'vue'
+import { computed, ref, watch, watchEffect } from 'vue'
 import { boxArt } from '@/lib/art'
 import { relativeDay } from '@/lib/dates'
+import { hasPlayTime, playTime, rankGames, type MostPlayedBy } from '@/lib/mostPlayed'
 
 const props = withDefaults(defineProps<{ games: GamePlayed[] | null; error?: string | null; limit?: number }>(), { limit: 8 })
 const emit = defineEmits<{ game: [name: string]; retry: [] }>()
 
-const top = computed(() =>
-  [...(props.games ?? [])].sort((a, b) => b.vods - a.vods || b.lastPlayed.getTime() - a.lastPlayed.getTime()).slice(0, props.limit),
-)
+const KEY = 'vods.mostPlayedBy'
+function stored(): MostPlayedBy {
+  try {
+    return localStorage.getItem(KEY) === 'time' ? 'time' : 'vods'
+  } catch {
+    return 'vods'
+  }
+}
+const chosen = ref<MostPlayedBy>(stored())
+watch(chosen, (by) => {
+  try {
+    localStorage.setItem(KEY, by)
+  } catch {
+    // private window or blocked storage: the choice just isn't remembered
+  }
+})
+const timed = computed(() => hasPlayTime(props.games ?? []))
+const by = computed<MostPlayedBy>(() => (timed.value ? chosen.value : 'vods'))
+const BY = [
+  { value: 'vods' as const, label: 'VODs' },
+  { value: 'time' as const, label: 'Time' },
+]
+
+const top = computed(() => rankGames(props.games ?? [], by.value, props.limit))
+const tag = (g: GamePlayed) =>
+  by.value === 'time' ? playTime(g.watchableSeconds ?? 0) : `${g.vods} VOD${g.vods === 1 ? '' : 's'}`
+function describe(g: GamePlayed) {
+  const time = g.watchableSeconds !== null ? `, ${playTime(g.watchableSeconds)} to watch` : ''
+  return `${g.name}: ${g.vods} VOD${g.vods === 1 ? '' : 's'}${time}, last played ${relativeDay(g.lastPlayed)}`
+}
 const art = (g: GamePlayed) => boxArt(g.image, 208) ?? undefined
 watchEffect(() => learnGameColors(top.value.map((g) => ({ name: g.name, image: art(g) }))))
 </script>
@@ -20,17 +49,20 @@ watchEffect(() => learnGameColors(top.value.map((g) => ({ name: g.name, image: a
 <template>
   <aside class="strip vx-panel" aria-label="Most played games">
     <div class="group">
-      <div class="vx-eyebrow">Most played</div>
+      <div class="head">
+        <div class="vx-eyebrow">Most played</div>
+        <VxSegmented v-if="timed" v-model="chosen" :options="BY" label="Rank games by" class="by" />
+      </div>
       <div v-if="error" class="vx-muted small">
         Couldn't load the games. <VxButton size="sm" variant="ghost" @click="emit('retry')">Try again</VxButton>
       </div>
       <div v-else-if="!games" class="hand" aria-busy="true"><VxSkeleton v-for="i in 6" :key="i" w="104px" h="139px" /></div>
       <ul v-else class="hand" :style="{ '--n': top.length }">
         <li v-for="(g, i) in top" :key="g.name" :style="{ '--i': i }">
-          <button type="button" class="card" :title="`${g.name}: ${g.vods} VODs, last played ${relativeDay(g.lastPlayed)}`" @click="emit('game', g.name)">
+          <button type="button" class="card" :title="describe(g)" @click="emit('game', g.name)">
             <img v-if="art(g)" :src="art(g)" alt="" loading="lazy" decoding="async" />
             <VxPlaceholder v-else :label="g.name" ratio="3 / 4" />
-            <span class="count vx-mono">{{ g.vods }} VOD{{ g.vods === 1 ? '' : 's' }}</span>
+            <span class="count vx-mono">{{ tag(g) }}</span>
             <span class="name">{{ g.name }}</span>
           </button>
         </li>
@@ -41,6 +73,8 @@ watchEffect(() => learnGameColors(top.value.map((g) => ({ name: g.name, image: a
 
 <style scoped>
 .strip { padding: 12px 14px; }
+.head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.by { font-size: 12px; }
 .group { display: flex; flex-direction: column; gap: 8px; min-width: 0; container-type: inline-size; }
 .small { font-size: 12px; }
 
