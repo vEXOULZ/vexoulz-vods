@@ -3,9 +3,9 @@
 // can't play hatched red, part labels above. Click, drag or use the arrow keys to seek (VOD seconds).
 import { clamp } from '@vexoulz/ui'
 import { toClock, type PartStatus, type Span, type Timeline } from '@vexoulz/vods-core'
-import { computed, ref } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import { unplayable } from '@/lib/cuts'
-import SnailMarker from './SnailMarker.vue'
+import SnailMarker, { type SnailMode } from './SnailMarker.vue'
 
 const props = defineProps<{
   timeline: Timeline
@@ -18,8 +18,10 @@ const props = defineProps<{
   partLabel?: (i: number) => string
   /** Colours per game (gamePalette of the VOD), shared with the posters. */
   palette: Map<string, string>
-  /** The snail on the playhead crawls while this is on. */
+  /** The snail on the playhead crawls while this is on, and sleeps otherwise. */
   playing?: boolean
+  /** Playback speed, which the snail crawls at. */
+  rate?: number
 }>()
 const emit = defineEmits<{ seek: [t: number] }>()
 
@@ -34,6 +36,17 @@ const label = (i: number) => props.partLabel?.(i) ?? `P${i + 1}`
 const track = ref<HTMLElement | null>(null)
 const hover = ref<{ x: number; t: number } | null>(null)
 const dragging = ref(false)
+
+// The snail floats while the time is being moved, and a moment after (so a click or a key shows it too).
+const floating = ref(false)
+let settle: ReturnType<typeof setTimeout> | undefined
+function seekTo(t: number) {
+  floating.value = true
+  clearTimeout(settle)
+  settle = setTimeout(() => (floating.value = false), 700)
+  emit('seek', t)
+}
+onUnmounted(() => clearTimeout(settle))
 
 function timeAt(clientX: number): number {
   const r = track.value!.getBoundingClientRect()
@@ -54,7 +67,7 @@ function onMove(e: PointerEvent) {
 function onUp(e: PointerEvent) {
   if (!dragging.value) return
   dragging.value = false
-  emit('seek', props.timeline.watchable(timeAt(e.clientX)))
+  seekTo(props.timeline.watchable(timeAt(e.clientX)))
 }
 function onKey(e: KeyboardEvent) {
   const step = e.shiftKey ? 60 : 10
@@ -62,15 +75,16 @@ function onKey(e: KeyboardEvent) {
   if (e.key in map) {
     e.preventDefault()
     e.stopPropagation()
-    emit('seek', props.timeline.watchable(clamp(props.time + map[e.key]!, props.range.start, props.range.end)))
+    seekTo(props.timeline.watchable(clamp(props.time + map[e.key]!, props.range.start, props.range.end)))
   } else if (e.key === 'Home' || e.key === 'End') {
     e.preventDefault()
-    emit('seek', props.timeline.watchable(e.key === 'Home' ? props.range.start : props.range.end - 1))
+    seekTo(props.timeline.watchable(e.key === 'Home' ? props.range.start : props.range.end - 1))
   }
 }
 const hoverChapter = computed(() => (hover.value ? props.timeline.chapterAt(hover.value.t) : null))
 const hoverCut = computed(() => (hover.value ? props.timeline.cutAt(hover.value.t) : null))
 const shown = computed(() => (dragging.value && hover.value ? hover.value.t : props.time))
+const snailMode = computed<SnailMode>(() => (dragging.value || floating.value ? 'float' : props.playing ? 'walk' : 'sleep'))
 /** The colour of the game at the playhead, for the snail's shell (none in a "stream down" gap). */
 const shownColor = computed(() => {
   const c = props.timeline.chapterAt(shown.value)
@@ -90,7 +104,7 @@ const shownColor = computed(() => {
         :class="{ cur: i === partIndex, bad: unplayable(status[i]) }"
         :style="{ left: pct(s.start) }"
         :title="`${label(i)} · ${toClock(s.start)}–${toClock(s.end)}${unplayable(status[i]) ? ' · unavailable' : ''}`"
-        @click="emit('seek', s.start)"
+        @click="seekTo(s.start)"
       >{{ label(i) }}</button>
     </div>
     <div
@@ -122,7 +136,7 @@ const shownColor = computed(() => {
       <span v-for="(s, i) in spans.slice(1)" :key="'t' + i" class="tick" :style="{ left: pct(s.start) }"></span>
       <span class="rest" :style="{ left: pct(shown) }"></span>
       <span class="played" :style="{ width: pct(shown) }"></span>
-      <SnailMarker class="head" :playing="playing" :shell="shownColor" :style="{ left: pct(shown) }" />
+      <SnailMarker class="head" :mode="snailMode" :rate="rate" :shell="shownColor" :style="{ left: pct(shown) }" />
       <span v-if="hover" class="tip vx-mono" :style="{ left: `${hover.x}px` }">
         {{ toClock(hover.t) }}<template v-if="hoverChapter?.kind === 'gap'"> · stream down</template><template v-else-if="hoverCut"> · cut from YouTube</template><template v-else-if="hoverChapter"> · {{ hoverChapter.name }}</template>
       </span>

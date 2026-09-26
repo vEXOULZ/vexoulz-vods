@@ -66,6 +66,7 @@ const label = (i: number) => props.partLabel?.(i) ?? `Part ${props.timeline.uplo
 const ytEl = ref<HTMLElement | null>(null)
 const time = ref(props.timeline.toVod(props.start))
 const playing = ref(false)
+const rate = ref(1)
 const partIndex = ref(props.start.index)
 const status = shallowRef<PartStatus[]>([])
 const playerError = ref<string | null>(null)
@@ -76,6 +77,7 @@ onMounted(() => {
   status.value = [...p.status]
   p.on('time', (t) => (time.value = t))
   p.on('playing', (v) => (playing.value = v))
+  p.on('rate', (r) => (rate.value = r))
   p.on('part', (i) => (partIndex.value = i))
   p.on('partError', () => (status.value = [...p.status]))
   p.on('ended', () => (playing.value = false))
@@ -238,6 +240,7 @@ useShortcuts(() => shortcuts.value)
             :part-label="partLabel"
             :palette="palette"
             :playing="playing"
+            :rate="rate"
             @seek="seek"
           />
           <div class="row">
