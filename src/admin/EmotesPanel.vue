@@ -7,7 +7,7 @@ import type { AdminEmotes } from './api'
 import { ago, stamp } from './format'
 import { admin } from './session'
 
-const props = defineProps<{ vodId: string }>()
+const props = defineProps<{ vodId: string; /** Merged or split: the archive won't capture from Twitch for it. */ spliced?: boolean }>()
 const emit = defineEmits<{ job: [jobId: number] }>()
 const toast = useToast()
 
@@ -108,8 +108,8 @@ async function run(name: string, action: () => Promise<{ msg: string; jobId?: nu
         </div>
       </template>
       <div class="foot">
-        <VxButton :loading="busy === 'fill'" @click="run('fill', () => admin.captureEmotes(vodId))">{{ data ? 'Fill missing sets' : 'Capture emotes' }}</VxButton>
-        <VxButton v-if="data" variant="danger" :loading="busy === 'force'" @click="confirmForce = true">Replace with today's sets…</VxButton>
+        <VxButton :disabled="spliced" :title="spliced ? 'Merged or split: Twitch’s VOD of this id no longer matches it' : undefined" :loading="busy === 'fill'" @click="run('fill', () => admin.captureEmotes(vodId))">{{ data ? 'Fill missing sets' : 'Capture emotes' }}</VxButton>
+        <VxButton v-if="data" variant="danger" :disabled="spliced" :loading="busy === 'force'" @click="confirmForce = true">Replace with today's sets…</VxButton>
         <VxButton v-if="data && !data.global_emotes" :loading="busy === 'backfill'" @click="run('backfill', () => admin.backfillGlobalEmotes([vodId]))">
           Backfill global sets
         </VxButton>

@@ -5,6 +5,7 @@
 import { gamePalette, learnGameColors, VxChapterBar, VxChip, VxLink, VxMenuItem, VxPlaceholder, VxPopover, VxPosters } from '@vexoulz/ui'
 import { toClock, type Progress, type Vod } from '@vexoulz/vods-core'
 import { computed, ref, watchEffect } from 'vue'
+import { cutNote } from '@/lib/cuts'
 import { boxArt, gamesWithArt, thumbnailOf } from '@/lib/art'
 import { watchPath } from '@/lib/listQuery'
 
@@ -74,7 +75,7 @@ watchEffect(() => {
               <VxPosters :games="[{ name: c.name, image: boxArt(c.image) ?? undefined, color: palette.get(c.name) }]" mode="row" :size="24" />
             </template>
             {{ c.name }}
-            <template v-if="c.restricted" #trail><VxChip title="Cut from the YouTube uploads">cut</VxChip></template>
+            <template v-if="cutNote(c)" #trail><VxChip :title="cutNote(c)!.title">{{ cutNote(c)!.label }}</VxChip></template>
           </VxMenuItem>
         </template>
       </VxPopover>

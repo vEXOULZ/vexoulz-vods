@@ -73,7 +73,7 @@ The existing `Authorization: Bearer <admin api key>` keeps working for scripts. 
   `{"chaptersLocked": bool, "jobs": [recent job objects for this VOD]}`.
 - `PATCH /admin/vods/{id}` `{"title"?: string}` → the updated VOD.
 - `PUT /admin/vods/{id}/chapters` `{"chapters": [{"name", "gameId", "imageTemplate"?, "start", "length",
-  "restricted"}], "locked": bool}` → the updated VOD. Validate: sorted by start, no overlaps, inside the VOD's
+  "restricted", "kind"?}], "locked": bool}` → the updated VOD. `kind: "gap"` keeps a merge's gap chapter one. Validate: sorted by start, no overlaps, inside the VOD's
   duration, lengths > 0. Store `image` too (template with a small size filled in) so old readers keep working.
   `locked: true` makes the automatic `chapters` step skip this VOD unless its payload has `"force": true`.
 - `PUT /admin/vods/{id}/youtube` `{"youtube": [{"id", "type": "vod|live", "part", "duration"?}]}` and
@@ -83,6 +83,24 @@ The existing `Authorization: Bearer <admin api key>` keeps working for scripts. 
 - `GET /admin/vods/{id}/emotes` → the saved emote row (or `null`).
 - After any VOD edit, the public API must serve the change right away (invalidate its cached responses for that VOD,
   and lists that include it).
+
+## 4b. Merging and splitting VODs (twitch-archive PR #16)
+
+For one broadcast that Twitch cut in two (merge), or two streams in one VOD (split). Nothing is re-uploaded; rows
+(chapters, parts, chat, games, emotes) move in one transaction, and every splice can be undone, latest first.
+
+- `GET /admin/vods/{id}` also has `splices: [{id, kind: "merge"|"split", vodId, otherId, offset, gap, detail,
+  createdAt, undoneAt, undoable}]`, and `merged_into: {id, offset}` on a VOD merged into another one.
+- `GET /admin/vods/{id}/merge-candidates` → `{vod: {..., endsAt, mergedInto}, withinMinutes, candidates: [{id,
+  streamId, title, createdAt, duration, gap, overlaps, titlesMatch}]}`.
+- `POST /admin/vods/{id}/merge` `{"source", "gap"?}`, `POST /admin/vods/{id}/unmerge` `{"source", "force"?}`,
+  `POST /admin/vods/{id}/split` `{"at", "force"?}`, `POST /admin/vods/{id}/unsplit` `{"source"?, "force"?}` →
+  `{"error": false, "msg", "splice", "vod", "warnings"?, "newVodId"?, "undid"?: "merge"}`.
+- 409s carry extra fields next to `msg`: a split inside an upload has `validPoints: [{at, from, to}]` (nearest
+  first); an undo that would lose edits made since has `edited: ["<vodId>.<field>", ...]` and works with `force`.
+- Twitch re-fetches (`/admin/chapters`, `/admin/emotes`, `/admin/logs`, `/admin/duration`, `/admin/download`,
+  `/admin/reupload`, `/admin/delete`, …) answer 409 for a merged or split VOD. `/admin/youtube/parts` still works;
+  the page asks to run it after a merge or split, since the descriptions list the old parts.
 
 ## 5. Audit log — new
 

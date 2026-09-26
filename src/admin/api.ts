@@ -80,6 +80,69 @@ export interface AdminVod extends RawVod {
   chaptersLocked: boolean
   /** Recent jobs for this VOD, newest first. */
   jobs: Job[]
+  /** Merges and splits touching this VOD, oldest first (undone ones included, with `undoneAt`). */
+  splices?: Splice[]
+}
+
+/** A merge (`otherId` appended to `vodId` at `offset`) or split (`vodId` from `offset` on became `otherId`). */
+export interface Splice {
+  id: number
+  kind: 'merge' | 'split'
+  vodId: string
+  otherId: string
+  /** Seconds into `vodId`. */
+  offset: number
+  /** Merges only: seconds the stream was down between the two (negative when they overlapped). */
+  gap: number | null
+  detail: Record<string, unknown>
+  createdAt: string
+  undoneAt: string | null
+  /** False while a later splice on either VOD has to be undone first. */
+  undoable: boolean
+}
+
+/** Whether Twitch's VOD of this id no longer matches it (merged or split), so the Twitch re-fetches refuse it. */
+export const isSpliced = (v: Pick<AdminVod, 'merged_into' | 'splices'>) => !!v.merged_into || (v.splices ?? []).some((s) => !s.undoneAt)
+
+export interface MergeCandidate {
+  id: string
+  streamId: string | null
+  title: string | null
+  createdAt: string
+  /** "HH:MM:SS". */
+  duration: string
+  /** Seconds between the end of this VOD and the start of that one; negative when they overlap. */
+  gap: number
+  overlaps: boolean
+  titlesMatch: boolean
+}
+
+/** GET /admin/vods/{id}/merge-candidates: VODs that started up to `withinMinutes` after this one ended. */
+export interface MergeCandidates {
+  vod: { id: string; streamId: string | null; title: string | null; createdAt: string; duration: string; endsAt: string; mergedInto: { id: string; offset: number } | null }
+  withinMinutes: number
+  candidates: MergeCandidate[]
+}
+
+/** What merge, unmerge, split and unsplit answer: the splice and this VOD as it is now. */
+export interface SpliceResult {
+  error: false
+  msg: string
+  splice: Splice
+  vod: AdminVod
+  /** Merges: the source's other upload type now plays a few seconds off. */
+  warnings?: string[]
+  /** Splits: the id of the new VOD. */
+  newVodId?: string
+  /** Set when the split point was a merge's join, so the split undid that merge instead. */
+  undid?: 'merge'
+}
+
+/** Where a split can go instead (a 409's `validPoints`): `at`, anywhere from `from` to `to` works too. */
+export interface SplitPoint {
+  at: number
+  from: number
+  to: number
 }
 
 /** A chapter as PUT /admin/vods/{id}/chapters takes it. Times in seconds; `length`, not an end time. */
@@ -90,6 +153,8 @@ export interface ChapterEdit {
   start: number
   length: number
   restricted: boolean
+  /** "gap" keeps a merge's gap chapter one (the worker drops nothing else it doesn't know). */
+  kind?: 'gap'
 }
 
 export interface YoutubeEdit {
@@ -128,6 +193,8 @@ export class AdminApiError extends Error {
     message: string,
     /** Seconds, from Retry-After (rate-limited logins). */
     readonly retryAfter: number | null = null,
+    /** The rest of the error body (a 409's `validPoints`, `edited`, `blockedBy`, …). */
+    readonly extra: Record<string, unknown> = {},
   ) {
     super(message)
     this.name = 'AdminApiError'
@@ -136,6 +203,16 @@ export class AdminApiError extends Error {
   /** The session is gone (expired, or the worker restarted): log in again. */
   get unauthorized(): boolean {
     return this.status === 401 || this.status === 403
+  }
+
+  /** A split refused inside an upload: the nearest points where it would work. */
+  get validPoints(): SplitPoint[] {
+    return Array.isArray(this.extra.validPoints) ? (this.extra.validPoints as SplitPoint[]) : []
+  }
+
+  /** An undo refused because it would throw away edits made since ("vodId.field", …); retry with force. */
+  get edited(): string[] {
+    return Array.isArray(this.extra.edited) ? (this.extra.edited as string[]) : []
   }
 }
 
@@ -175,7 +252,8 @@ export class AdminClient {
     if (!res.ok) {
       const msg = (data as { msg?: string; message?: string } | null)?.msg ?? (data as { message?: string } | null)?.message
       const retry = Number(res.headers.get('retry-after'))
-      const err = new AdminApiError(res.status, msg || `HTTP ${res.status}`, Number.isFinite(retry) && retry > 0 ? retry : null)
+      const { error: _e, msg: _m, message: _msg, ...extra } = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
+      const err = new AdminApiError(res.status, msg || `HTTP ${res.status}`, Number.isFinite(retry) && retry > 0 ? retry : null, extra)
       if (err.unauthorized && path !== '/admin/session') this.onUnauthorized?.()
       throw err
     }
@@ -257,6 +335,26 @@ export class AdminClient {
   }
   searchGames(query: string, signal?: AbortSignal): Promise<TwitchGame[]> {
     return this.request('GET', `/admin/twitch/games?query=${encodeURIComponent(query)}`, undefined, signal)
+  }
+
+  // ---- merges and splits (one broadcast that Twitch cut in two, or two streams in one VOD) ----
+  mergeCandidates(id: string, signal?: AbortSignal): Promise<MergeCandidates> {
+    return this.request('GET', `/admin/vods/${enc(id)}/merge-candidates`, undefined, signal)
+  }
+  /** Appends `source` (the later VOD) to `id`; `gap` (seconds) replaces the gap worked out from the start times. */
+  merge(id: string, source: string, gap?: number): Promise<SpliceResult> {
+    return this.request('POST', `/admin/vods/${enc(id)}/merge`, { source, ...(gap != null ? { gap } : {}) })
+  }
+  unmerge(id: string, source: string, force = false): Promise<SpliceResult> {
+    return this.request('POST', `/admin/vods/${enc(id)}/unmerge`, { source, ...(force ? { force } : {}) })
+  }
+  /** From `at` (VOD seconds) on becomes a new VOD; at a merge's join, undoes that merge. */
+  split(id: string, at: number, force = false): Promise<SpliceResult> {
+    return this.request('POST', `/admin/vods/${enc(id)}/split`, { at, ...(force ? { force } : {}) })
+  }
+  /** Undoes the latest split of `id`, or the one that made `source`. */
+  unsplit(id: string, source?: string, force = false): Promise<SpliceResult> {
+    return this.request('POST', `/admin/vods/${enc(id)}/unsplit`, { ...(source ? { source } : {}), ...(force ? { force } : {}) })
   }
 
   // ---- VOD jobs and fixes (the worker's existing routes) ----

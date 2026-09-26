@@ -3,7 +3,7 @@
 // delete removes the VOD from the archive after typing its id.
 import { VxButton, VxCheckbox, VxDialog, VxField, VxInput, VxSelect, useToast, type Option } from '@vexoulz/ui'
 import { computed, ref } from 'vue'
-import type { ActionResult, AdminVod } from './api'
+import { isSpliced, type ActionResult, type AdminVod } from './api'
 import { admin } from './session'
 
 const props = defineProps<{ vod: AdminVod }>()
@@ -57,6 +57,10 @@ function reupload() {
 
 const descType = ref<'vod' | 'live'>('vod')
 
+// A merged or split VOD no longer matches Twitch's VOD of that id: the archive refuses anything that re-fetches it.
+const spliced = computed(() => isSpliced(props.vod))
+const TWITCH_OFF = 'Merged or split: Twitch’s VOD of this id no longer matches it'
+
 // Delete
 const delOpen = ref(false)
 const delConfirm = ref('')
@@ -68,13 +72,17 @@ function remove() {
 
 <template>
   <div class="actions">
+    <p v-if="spliced" class="vx-muted spliced">
+      This VOD was merged or split, so it no longer matches Twitch's VOD of the same id. Re-fetching from Twitch,
+      downloading, re-uploading and deleting are off until that's undone (see Merge and split).
+    </p>
     <div class="group">
       <div class="vx-eyebrow">Metadata</div>
       <div class="btns">
-        <VxButton :loading="busy === 'chapters'" @click="run('chapters', () => admin.refetchChapters(vod.id, forceChapters))">Re-fetch chapters from Twitch</VxButton>
-        <VxCheckbox v-if="vod.chaptersLocked" v-model="forceChapters" class="small">replace hand edits (locked)</VxCheckbox>
-        <VxButton :loading="busy === 'chat'" @click="run('chat', () => admin.saveChat(vod.id))">Save chat again</VxButton>
-        <VxButton :loading="busy === 'duration'" @click="run('duration', () => admin.refreshDuration(vod.id), () => emit('changed'))">Refresh duration</VxButton>
+        <VxButton :disabled="spliced" :title="spliced ? TWITCH_OFF : undefined" :loading="busy === 'chapters'" @click="run('chapters', () => admin.refetchChapters(vod.id, forceChapters))">Re-fetch chapters from Twitch</VxButton>
+        <VxCheckbox v-if="vod.chaptersLocked && !spliced" v-model="forceChapters" class="small">replace hand edits (locked)</VxCheckbox>
+        <VxButton :disabled="spliced" :title="spliced ? TWITCH_OFF : undefined" :loading="busy === 'chat'" @click="run('chat', () => admin.saveChat(vod.id))">Save chat again</VxButton>
+        <VxButton :disabled="spliced" :title="spliced ? TWITCH_OFF : undefined" :loading="busy === 'duration'" @click="run('duration', () => admin.refreshDuration(vod.id), () => emit('changed'))">Refresh duration</VxButton>
       </div>
     </div>
     <div class="group">
@@ -82,14 +90,14 @@ function remove() {
       <div class="btns">
         <VxSelect v-if="hasLive" v-model="descType" :options="TYPES" width="96px" />
         <VxButton :loading="busy === 'describe'" @click="run('describe', () => admin.updateDescriptions(vod.id, descType))">Update descriptions</VxButton>
-        <VxButton :loading="busy === 'reupload'" @click="ruOpen = true">Re-upload a part…</VxButton>
-        <VxButton :loading="busy === 'download'" @click="dlOpen = true">Download and upload again…</VxButton>
+        <VxButton :disabled="spliced" :title="spliced ? TWITCH_OFF : undefined" :loading="busy === 'reupload'" @click="ruOpen = true">Re-upload a part…</VxButton>
+        <VxButton :disabled="spliced" :title="spliced ? TWITCH_OFF : undefined" :loading="busy === 'download'" @click="dlOpen = true">Download and upload again…</VxButton>
       </div>
     </div>
     <div class="group">
       <div class="vx-eyebrow">Danger</div>
       <div class="btns">
-        <VxButton variant="danger" :loading="busy === 'delete'" @click="delConfirm = ''; delOpen = true">Delete from the archive…</VxButton>
+        <VxButton variant="danger" :disabled="spliced" :title="spliced ? TWITCH_OFF : undefined" :loading="busy === 'delete'" @click="delConfirm = ''; delOpen = true">Delete from the archive…</VxButton>
       </div>
     </div>
 
@@ -145,6 +153,7 @@ function remove() {
 .group { display: flex; flex-direction: column; gap: 6px; }
 .btns { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .small { font-size: 12px; }
+.spliced { margin: 0; font-size: 13px; max-width: 72ch; }
 .form { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; color: var(--vx-text, inherit); }
 .form :deep(input) { width: 100%; box-sizing: border-box; }
 .range { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }

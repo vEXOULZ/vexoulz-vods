@@ -4,12 +4,13 @@ import { VxButton, VxCallout, VxChip, VxInput, VxSkeleton, useToast } from '@vex
 import { toClock, toSeconds } from '@vexoulz/vods-core'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import type { AdminVod } from '@/admin/api'
+import { isSpliced, type AdminVod } from '@/admin/api'
 import AdminShell from '@/admin/AdminShell.vue'
 import ChaptersEditor from '@/admin/ChaptersEditor.vue'
 import DriveEditor from '@/admin/DriveEditor.vue'
 import EmotesPanel from '@/admin/EmotesPanel.vue'
 import JobsTable from '@/admin/JobsTable.vue'
+import SplicePanel from '@/admin/SplicePanel.vue'
 import { stamp } from '@/admin/format'
 import { admin } from '@/admin/session'
 import { usePoll } from '@/admin/usePoll'
@@ -105,6 +106,7 @@ onMounted(() => (document.title = `VOD ${props.id} · Admin · vods.vexoulz.net`
           <div><dt>Id</dt><dd class="vx-mono">{{ vod.id }}</dd></div>
           <div><dt>Streamed</dt><dd :title="stamp(vod.createdAt)">{{ new Date(vod.createdAt).toLocaleString() }}</dd></div>
           <div><dt>Duration</dt><dd class="vx-mono">{{ toClock(duration) }}</dd></div>
+          <div v-if="vod.merged_into"><dt>Merged into</dt><dd class="vx-mono"><RouterLink :to="`/admin/vods/${vod.merged_into.id}`">{{ vod.merged_into.id }}</RouterLink> at {{ toClock(vod.merged_into.offset) }}</dd></div>
           <div v-if="vod.stream_id"><dt>Stream</dt><dd class="vx-mono">{{ vod.stream_id }}</dd></div>
           <div><dt>Parts</dt><dd>{{ vod.youtube?.length ?? 0 }} YouTube · {{ vod.drive?.length ?? 0 }} Drive</dd></div>
           <div><dt>Chapters</dt><dd>{{ vod.chapters?.length ?? 0 }} <VxChip v-if="vod.chaptersLocked" tone="warn">locked</VxChip></dd></div>
@@ -117,29 +119,37 @@ onMounted(() => (document.title = `VOD ${props.id} · Admin · vods.vexoulz.net`
       </section>
 
       <section class="panel vx-panel">
+        <h2 class="vx-eyebrow">Merge and split</h2>
+        <SplicePanel :vod="vod" @changed="load" @job="jobStarted" />
+      </section>
+
+      <section class="panel vx-panel">
         <h2 class="vx-eyebrow">Jobs <span v-if="activeJobs" class="vx-muted">· {{ activeJobs }} active</span></h2>
         <JobsTable :jobs="jobs" empty="No jobs for this VOD." />
       </section>
 
-      <section class="panel vx-panel">
-        <h2 class="vx-eyebrow">Chapters</h2>
-        <ChaptersEditor :vod="vod" :duration="duration" @saved="saved" />
-      </section>
+      <!-- A VOD merged into another has no chapters, uploads or emotes of its own left to edit. -->
+      <template v-if="!vod.merged_into">
+        <section class="panel vx-panel">
+          <h2 class="vx-eyebrow">Chapters</h2>
+          <ChaptersEditor :vod="vod" :duration="duration" @saved="saved" />
+        </section>
 
-      <section class="panel vx-panel">
-        <h2 class="vx-eyebrow">YouTube parts</h2>
-        <YoutubeEditor :vod="vod" @saved="saved" />
-      </section>
+        <section class="panel vx-panel">
+          <h2 class="vx-eyebrow">YouTube parts</h2>
+          <YoutubeEditor :vod="vod" @saved="saved" />
+        </section>
 
-      <section class="panel vx-panel">
-        <h2 class="vx-eyebrow">Drive files</h2>
-        <DriveEditor :vod="vod" @saved="saved" />
-      </section>
+        <section class="panel vx-panel">
+          <h2 class="vx-eyebrow">Drive files</h2>
+          <DriveEditor :vod="vod" @saved="saved" />
+        </section>
 
-      <section class="panel vx-panel">
-        <h2 class="vx-eyebrow">Emotes</h2>
-        <EmotesPanel :vod-id="vod.id" @job="jobStarted" />
-      </section>
+        <section class="panel vx-panel">
+          <h2 class="vx-eyebrow">Emotes</h2>
+          <EmotesPanel :vod-id="vod.id" :spliced="isSpliced(vod)" @job="jobStarted" />
+        </section>
+      </template>
     </template>
   </AdminShell>
 </template>

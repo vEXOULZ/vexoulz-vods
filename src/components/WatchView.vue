@@ -33,6 +33,7 @@ import WatchTimeline from '@/components/WatchTimeline.vue'
 import { useChatSettings } from '@/composables/useChatSettings'
 import { useFullscreen } from '@/composables/useFullscreen'
 import { useShortcuts, type Shortcut } from '@/composables/useShortcuts'
+import { cutNote } from '@/lib/cuts'
 import { boxArt, gamesWithArt } from '@/lib/art'
 import { NAV } from '@/lib/nav'
 
@@ -265,7 +266,7 @@ useShortcuts(() => shortcuts.value)
                       <VxPosters :games="[{ name: c.name, image: boxArt(c.image) ?? undefined, color: palette.get(c.name) }]" mode="row" :size="24" />
                     </template>
                     {{ c.name }}
-                    <template v-if="c.restricted" #trail><VxChip title="Cut from the YouTube uploads">cut</VxChip></template>
+                    <template v-if="cutNote(c)" #trail><VxChip :title="cutNote(c)!.title">{{ cutNote(c)!.label }}</VxChip></template>
                   </VxMenuItem>
                 </template>
               </VxPopover>

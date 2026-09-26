@@ -23,6 +23,8 @@ export interface ChapterDraft {
   /** VOD seconds (absolute), unlike the API's length. */
   end: number
   restricted: boolean
+  /** A merge's gap chapter ("Technical difficulties"): kept as one on save. */
+  kind?: 'gap'
 }
 
 /** A box art URL with the size baked in → a `{width}x{height}` template (older chapters only have `image`). */
@@ -44,6 +46,7 @@ export function chapterDrafts(chapters: readonly RawChapter[] | null | undefined
       start: c.start,
       end: c.start + length,
       restricted: !!c.restricted,
+      ...(c.kind === 'gap' ? { kind: 'gap' as const } : {}),
     }
   })
 }
@@ -82,6 +85,7 @@ export function chapterEdits(rows: readonly ChapterDraft[]): ChapterEdit[] {
       start: r.start,
       length: r.end - r.start,
       restricted: r.restricted,
+      ...(r.kind === 'gap' ? { kind: 'gap' as const } : {}),
     }))
 }
 

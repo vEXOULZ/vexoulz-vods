@@ -18,10 +18,11 @@ export interface GameArt {
   image?: string
 }
 
-/** Distinct games in chapter order, each with its box art if any chapter of it has one. */
+/** Distinct games in chapter order, each with its box art if any chapter of it has one. A merge's gap isn't a game. */
 export function gamesWithArt(chapters: readonly Chapter[]): GameArt[] {
   const out = new Map<string, GameArt>()
   for (const c of chapters) {
+    if (c.kind === 'gap') continue
     const image = boxArt(c.image) ?? undefined
     const seen = out.get(c.name)
     if (!seen) out.set(c.name, image ? { name: c.name, image } : { name: c.name })

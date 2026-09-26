@@ -165,6 +165,7 @@ const adminVod = (v: Json) => ({
   ...v,
   chaptersLocked: locked.has(String(v.id)),
   jobs: jobs.filter((j) => j.vodId === v.id).slice(0, 20).map(json),
+  splices: splicesOf(String(v.id)),
 })
 
 const hms = (s: number) => [Math.floor(s / 3600), Math.floor(s / 60) % 60, Math.floor(s % 60)].map((n) => String(n).padStart(2, '0')).join(':')
@@ -189,8 +190,146 @@ function checkChapters(items: unknown, duration: number): Json[] {
     return {
       gameId: c.gameId ?? null, name: c.name ?? null, image: t ? t.replace('{width}', '40').replace('{height}', '53') : null,
       imageTemplate: t, duration: hms(start), start, end: length, length, restricted: !!c.restricted,
+      ...(c.kind === 'gap' ? { kind: 'gap' } : {}),
     }
   })
+}
+
+// ---- merges and splits (twitch-archive's splices.py, simplified: one upload type, no chat or games rows) ----
+interface SpliceRow {
+  id: number; kind: 'merge' | 'split'; vodId: string; otherId: string; offset: number; gap: number | null
+  detail: Json; createdAt: string; undoneAt: string | null
+  before: Record<string, Json | null>; after: Record<string, string>
+}
+const splices: SpliceRow[] = []
+/** VODs whose rows a splice changed: the public side (`/backend/vods/:id`) answers these from here. */
+const spliced = new Set<string>()
+const GAP_NAME = 'Technical difficulties'
+const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v))
+const durOf = (v: Json) => Number(v.duration_seconds) || secondsOf(v.duration)
+const setDur = (v: Json, s: number) => ((v.duration = hms(s)), (v.duration_seconds = s))
+const chapterLen = (c: Json) => Number(c.length ?? c.end) || 0
+const touches = (o: SpliceRow, sp: SpliceRow) => [o.vodId, o.otherId].some((x) => x === sp.vodId || x === sp.otherId)
+const laterThan = (sp: SpliceRow) => splices.filter((o) => !o.undoneAt && o.id > sp.id && touches(o, sp))
+
+function spliceJson(sp: SpliceRow) {
+  const { before: _b, after: _a, ...rest } = sp
+  return { ...rest, undoable: !sp.undoneAt && laterThan(sp).length === 0 }
+}
+const splicesOf = (id: string) => splices.filter((sp) => sp.vodId === id || sp.otherId === id).map(spliceJson)
+const played = (v: Json) => (((v.youtube as Json[]) ?? []).some((u) => u.type === 'live') ? 'live' : 'vod')
+
+/** Where each part of the played type ends, in VOD time (the site's model: delay at the start, cuts skipped). */
+function partEnds(v: Json): { at: number; from: number; to: number }[] {
+  const type = played(v)
+  const parts = ((v.youtube as Json[]) ?? []).filter((u) => u.type === type).sort((a, b) => a.part - b.part)
+  const cuts = ((v.chapters as Json[]) ?? []).filter((c) => c.restricted).map((c) => ({ start: Number(c.start), end: Number(c.start) + chapterLen(c) }))
+  const total = parts.reduce((t, u) => t + (Number(u.duration) || 0), 0)
+  const delay = Math.max(0, durOf(v) - total - cuts.reduce((t, c) => t + c.end - c.start, 0))
+  const out: { at: number; from: number; to: number }[] = []
+  let u = 0
+  for (const part of parts.slice(0, -1)) {
+    u += Number(part.duration) || 0
+    let t = u + delay
+    for (const c of cuts) if (c.start < t - 0.5) t += c.end - c.start
+    const cut = cuts.find((c) => Math.abs(c.start - t) < 1)
+    out.push({ at: Math.round(t), from: Math.round(t), to: Math.round(cut ? cut.end : t) })
+  }
+  return out
+}
+
+function recordSplice(kind: SpliceRow['kind'], a: Json, b: Json, offset: number, gap: number | null, before: SpliceRow['before'], detail: Json = {}) {
+  const sp: SpliceRow = {
+    id: splices.length + 1, kind, vodId: String(a.id), otherId: String(b.id), offset, gap, detail: { offset, gap, ...detail },
+    createdAt: iso(), undoneAt: null, before, after: { [a.id]: JSON.stringify(a), [b.id]: JSON.stringify(b) },
+  }
+  splices.push(sp)
+  spliced.add(String(a.id))
+  spliced.add(String(b.id))
+  locked.add(String(a.id))
+  return sp
+}
+
+const spliceError = (status: number, msg: string, extra: Json = {}) => Object.assign(new Error(msg), { status, extra })
+
+function mergeVods(a: Json, b: Json, gapIn: unknown) {
+  if (a.id === b.id) throw spliceError(400, 'A VOD cannot be merged with itself')
+  if (a.merged_into || b.merged_into) throw spliceError(409, `${a.merged_into ? a.id : b.id} is already merged into another VOD`)
+  if (Date.parse(b.createdAt) < Date.parse(a.createdAt)) throw spliceError(409, `${b.id} started before ${a.id}; merge the later VOD into the earlier one`)
+  const aDur = durOf(a)
+  const measured = Math.round((Date.parse(b.createdAt) - Date.parse(a.createdAt)) / 1000) - aDur
+  if (gapIn == null && measured < 0) throw spliceError(409, `The VODs overlap by ${-measured}s; pass gap to set the real one`)
+  const gap = gapIn == null ? measured : Number(gapIn)
+  if (!(gap >= 0) || !Number.isInteger(gap)) throw spliceError(400, 'gap must be a whole number of seconds >= 0')
+  const before = { [a.id]: clone(a), [b.id]: clone(b) }
+  const offset = aDur + gap
+  const shift = (c: Json) => ({ ...c, start: Number(c.start) + offset })
+  const gapChapter = gap > 0 ? [{ name: GAP_NAME, gameId: null, image: null, imageTemplate: null, duration: hms(aDur), start: aDur, end: gap, length: gap, restricted: true, kind: 'gap' }] : []
+  a.chapters = [...((a.chapters as Json[]) ?? []), ...gapChapter, ...((b.chapters as Json[]) ?? []).map(shift)]
+  const count: Record<string, number> = {}
+  a.youtube = [...((a.youtube as Json[]) ?? []), ...((b.youtube as Json[]) ?? [])].map((u) => ({ ...u, part: (count[u.type] = (count[u.type] ?? 0) + 1) }))
+  a.drive = [...((a.drive as Json[]) ?? []), ...((b.drive as Json[]) ?? [])]
+  setDur(a, offset + durOf(b))
+  Object.assign(b, { chapters: [], youtube: [], drive: [], games: [], merged_into: { id: a.id, offset } })
+  return recordSplice('merge', a, b, offset, gap, before, { playedType: played(a) })
+}
+
+function splitVod(a: Json, at: number) {
+  if (a.merged_into) throw spliceError(409, `${a.id} is already merged into ${a.merged_into.id}`)
+  const join = [...splices].reverse().find((sp) => sp.kind === 'merge' && !sp.undoneAt && sp.vodId === a.id && at >= sp.offset - (sp.gap ?? 0) - 2 && at <= sp.offset + 2)
+  if (join) return { undid: undo(join, false) }
+  const ends = partEnds(a)
+  const hit = ends.find((p) => at >= p.from - 2 && at <= p.to + 2)
+  if (!hit) {
+    const validPoints = [...ends].sort((x, y) => Math.abs(x.at - at) - Math.abs(y.at - at)).slice(0, 4)
+    throw spliceError(409, `${hms(at)} is inside an upload; split where one part ends and the next starts`, { validPoints })
+  }
+  const cut = Math.round(at)
+  let n = 2
+  while (vods.has(`${a.id}-${n}`) && !deleted.has(`${a.id}-${n}`)) n++
+  const id = `${a.id}-${n}`
+  const before: Record<string, Json | null> = { [a.id]: clone(a), [id]: null }
+  const type = played(a)
+  const parts = ((a.youtube as Json[]) ?? []).filter((u) => u.type === type)
+  const idx = ends.indexOf(hit) + 1
+  const b: Json = {
+    ...clone(a), id, createdAt: new Date(Date.parse(a.createdAt) + cut * 1000).toISOString(),
+    chapters: ((a.chapters as Json[]) ?? []).filter((c) => Number(c.start) + chapterLen(c) > cut).map((c) => {
+      const start = Math.max(0, Number(c.start) - cut)
+      const length = Number(c.start) + chapterLen(c) - cut - start
+      return { ...c, start, end: length, length }
+    }),
+    youtube: parts.slice(idx).map((u, i) => ({ ...u, part: i + 1 })), drive: [], games: [],
+  }
+  setDur(b, durOf(a) - cut)
+  a.chapters = ((a.chapters as Json[]) ?? []).filter((c) => Number(c.start) < cut).map((c) => {
+    const length = Math.min(chapterLen(c), cut - Number(c.start))
+    return { ...c, end: length, length }
+  })
+  a.youtube = parts.slice(0, idx)
+  setDur(a, cut)
+  vods.set(id, b)
+  deleted.delete(id)
+  return { splice: recordSplice('split', a, b, cut, null, before), newVodId: id }
+}
+
+function undo(sp: SpliceRow, force: boolean) {
+  const later = laterThan(sp).at(-1)
+  if (later) throw spliceError(409, `${later.vodId} was ${later.kind === 'merge' ? 'merged with' : 'split into'} ${later.otherId} since (splice ${later.id}); undo that first`)
+  const edited = Object.entries(sp.after).flatMap(([id, was]) => {
+    const now = vods.get(id)
+    if (!now) return []
+    const old = JSON.parse(was) as Json
+    return ['title', 'chapters', 'youtube', 'duration'].filter((k) => JSON.stringify(now[k]) !== JSON.stringify(old[k])).map((k) => `${id}.${k}`)
+  })
+  if (edited.length && !force)
+    throw spliceError(409, `Edited since the ${sp.kind}: ${edited.join(', ')}. Undoing it restores the rows as they were before, losing those edits; pass force to do it anyway`, { edited })
+  for (const [id, row] of Object.entries(sp.before)) {
+    if (row) vods.set(id, clone(row))
+    else deleted.add(id)
+  }
+  sp.undoneAt = iso()
+  return spliceJson(sp)
 }
 
 export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vexoulz.net/backend'): Plugin {
@@ -201,6 +340,15 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
       const timer = setInterval(advance, 2000)
       timer.unref()
       server.httpServer?.on('close', () => clearInterval(timer))
+      // The public API reads the same rows: VODs a mock merge or split changed answer from here.
+      server.middlewares.use('/backend', (req, res, next) => {
+        const pm = /^\/vods\/([^/?]+)(?:\?.*)?$/.exec(req.url ?? '')
+        const id = pm ? decodeURIComponent(pm[1]!) : ''
+        if (!pm || !spliced.has(id)) return next()
+        if (deleted.has(id)) return send(res, 404, { name: 'NotFound', message: 'No record found', code: 404 })
+        const { chaptersLocked: _c, jobs: _j, splices: _s, ...pub } = adminVod(vods.get(id)!)
+        return send(res, 200, pub)
+      })
       server.middlewares.use(base, async (req, res) => {
         const url = new URL(req.url ?? '/', 'http://x')
         const path = url.pathname
@@ -283,7 +431,7 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
           return ok(res, `Job ${job.id} ${job.kind} ${job.state} at step ${job.step}`, job)
         }
 
-        const m = /^\/admin\/jobs\/(\d+)(?:\/(\w+))?$/.exec(path)
+        const m = /^\/admin\/jobs\/(\d+)(?:\/([\w-]+))?$/.exec(path)
         const job = m ? jobs.find((j) => j.id === Number(m[1])) : undefined
         if (m && !job) return fail(res, 404, 'No such job')
         if (m && job) {
@@ -328,7 +476,7 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
           }
         }
         // ---- VODs ----
-        const vm = /^\/admin\/vods\/([^/]+)(?:\/(\w+))?$/.exec(path)
+        const vm = /^\/admin\/vods\/([^/]+)(?:\/([\w-]+))?$/.exec(path)
         if (vm) {
           const id = decodeURIComponent(vm[1]!)
           const vod = await vodOf(publicApi, id)
@@ -336,6 +484,47 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
           const part = vm[2]
           try {
             if (!part && method === 'GET') return send(res, 200, adminVod(vod))
+            if (part === 'merge-candidates' && method === 'GET') {
+              // The worker lists VODs that started up to 30 minutes after this one ended. Real back-to-back VODs are
+              // rare, so the mock offers the next three whatever the gap, to have something to show.
+              const aDur = durOf(vod)
+              const ends = Date.parse(vod.createdAt) + aDur * 1000
+              const page = (await publicJson(publicApi, `/vods?createdAt[$gt]=${encodeURIComponent(vod.createdAt)}&$sort[createdAt]=1&$limit=3`)) as { data: Json[] }
+              const norm = (t: unknown) => String(t ?? '').trim().replace(/\s+/g, ' ').toLowerCase()
+              return send(res, 200, {
+                vod: { id: vod.id, streamId: vod.stream_id ?? null, title: vod.title, createdAt: vod.createdAt, duration: vod.duration, endsAt: new Date(ends).toISOString(), mergedInto: vod.merged_into ?? null },
+                withinMinutes: 30,
+                candidates: page.data.filter((c) => !vods.get(String(c.id))?.merged_into && !deleted.has(String(c.id))).map((c) => {
+                  const gap = Math.round((Date.parse(c.createdAt) - Date.parse(vod.createdAt)) / 1000) - aDur
+                  return { id: c.id, streamId: c.stream_id ?? null, title: c.title, createdAt: c.createdAt, duration: c.duration, gap, overlaps: gap < 0, titlesMatch: norm(c.title) === norm(vod.title) }
+                }),
+              })
+            }
+            if (part === 'merge' && method === 'POST') {
+              const src = await vodOf(publicApi, String(b.source ?? ''))
+              if (!src) return fail(res, 404, `No Vod Data for ${b.source}`)
+              const sp = mergeVods(vod, src, b.gap)
+              return send(res, 200, { error: false, msg: `Merged ${src.id} into ${id} at ${sp.offset}s`, splice: spliceJson(sp), warnings: [], vod: adminVod(vod) })
+            }
+            if (part === 'unmerge' && method === 'POST') {
+              const sp = [...splices].reverse().find((x) => x.kind === 'merge' && !x.undoneAt && x.vodId === id && x.otherId === String(b.source))
+              if (!sp) return fail(res, 404, `${b.source} is not merged into ${id}`)
+              const out = undo(sp, !!b.force)
+              return send(res, 200, { error: false, msg: `Unmerged ${sp.otherId} from ${id}`, splice: out, vod: adminVod(vods.get(id)!) })
+            }
+            if (part === 'split' && method === 'POST') {
+              if (typeof b.at !== 'number') return fail(res, 400, 'at must be a number of seconds')
+              const r = splitVod(vod, b.at)
+              if (r.undid)
+                return send(res, 200, { error: false, msg: `${b.at}s is where ${r.undid.otherId} was merged in; undid that merge`, undid: 'merge', splice: r.undid, vod: adminVod(vods.get(id)!) })
+              return send(res, 200, { error: false, msg: `Split ${id} at ${r.splice.offset}s into ${r.newVodId}`, splice: spliceJson(r.splice), newVodId: r.newVodId, vod: adminVod(vods.get(id)!) })
+            }
+            if (part === 'unsplit' && method === 'POST') {
+              const sp = [...splices].reverse().find((x) => x.kind === 'split' && !x.undoneAt && x.vodId === id && (!b.source || x.otherId === String(b.source)))
+              if (!sp) return fail(res, 404, `${id} has no split to undo`)
+              const out = undo(sp, !!b.force)
+              return send(res, 200, { error: false, msg: `Joined ${sp.otherId} back into ${id}`, splice: out, vod: adminVod(vods.get(id)!) })
+            }
             if (!part && method === 'PATCH') {
               if (typeof b.title !== 'string' || !b.title.trim()) return fail(res, 400, 'title must be a non-empty string')
               vod.title = b.title.trim()
@@ -368,7 +557,8 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
               return send(res, 200, emoteRows.get(id))
             }
           } catch (e) {
-            return fail(res, 400, (e as Error).message)
+            const err = e as Error & { status?: number; extra?: Json }
+            return send(res, err.status ?? 400, { error: true, msg: err.message, ...(err.extra ?? {}) })
           }
         }
         if (path === '/admin/twitch/games') {
@@ -393,6 +583,10 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
         if (method === 'POST' || method === 'DELETE') {
           const needsVod = ['/admin/chapters', '/admin/emotes', '/admin/logs', '/admin/duration', '/admin/youtube/parts', '/admin/download', '/admin/reupload', '/admin/delete']
           if (needsVod.includes(path) && !(await vodOf(publicApi, vodId))) return fail(res, 404, 'No Vod Data')
+          // A merged or split VOD no longer matches Twitch's VOD of that id: the worker refuses to re-fetch it.
+          const twitch = ['/admin/chapters', '/admin/emotes', '/admin/logs', '/admin/duration', '/admin/download', '/admin/reupload', '/admin/delete', '/admin/hls/download']
+          if (twitch.includes(path) && (vods.get(vodId)?.merged_into || splicesOf(vodId).some((sp) => !sp.undoneAt)))
+            return fail(res, 409, `vod ${vodId} was merged or split; it no longer matches Twitch's VOD of that id`)
           switch (path) {
             case '/admin/chapters': return start('chapters', `Saving Chapters for ${vodId}`)
             case '/admin/emotes': return start('emotes', b.force ? 'Saving emotes (overwriting)..' : 'Saving emotes..')
