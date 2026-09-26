@@ -11,9 +11,9 @@ import {
   VxPopover,
   VxSkeleton,
 } from '@vexoulz/ui'
-import { isResumable, type GamePlayed, type Progress, type Vod } from '@vexoulz/vods-core'
+import { isResumable, type GamePlayed, type Progress } from '@vexoulz/vods-core'
 import { useVods, useVodsContext } from '@vexoulz/vods-core/vue'
-import { computed, onUnmounted, ref, shallowRef, watch } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import GamePicker from '@/components/GamePicker.vue'
 import LatestVod from '@/components/LatestVod.vue'
