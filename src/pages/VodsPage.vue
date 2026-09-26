@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // Past broadcasts: one filter bar (All resets, title search, game dropdown with every game in the archive, date
 // range; all combinable and kept in the URL), a grid of cards, and "load more". On phones the bar wraps.
+// Unfiltered, the newest VOD gets its own panel on top, next to shortcuts to the most played games and recent dates.
 import {
   VxAccountMenu,
   VxButton,
@@ -17,6 +18,8 @@ import { useVodsContext } from '@vexoulz/vods-core/vue'
 import { computed, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import GamePicker from '@/components/GamePicker.vue'
+import LatestVod from '@/components/LatestVod.vue'
+import ShortcutsTile from '@/components/ShortcutsTile.vue'
 import VodCard from '@/components/VodCard.vue'
 import { loadGamesPlayed } from '@/lib/gamesPlayed'
 import { hasFilters, parseListQuery, toApiFilter, toListQuery, type ListState } from '@/lib/listQuery'
@@ -131,12 +134,27 @@ progress
   .then((all) => (resumeAt.value = new Map(all.filter((p) => isResumable(p)).map((p) => [p.vodId, p]))))
   .catch(() => undefined)
 
+// ---- the latest VOD, on top when nothing is filtered (and not repeated in the grid) ----
+const latest = computed(() => (!hasFilters(state.value) && shownFrom.value === 0 && vods.value.length ? vods.value[0]! : null))
+const listed = computed(() => (latest.value ? vods.value.slice(1) : vods.value))
+
 const countText = computed(() => `${(shownFrom.value + vods.value.length).toLocaleString()} of ${total.value.toLocaleString()}`)
 </script>
 
 <template>
   <VxSiteShell site="vods" :nav="NAV">
     <template #account><VxAccountMenu disabled note="Sign-in comes later; progress is saved in this browser." /></template>
+
+    <section v-if="latest" class="top">
+      <LatestVod :vod="latest" :progress="resumeAt.get(latest.id)" />
+      <ShortcutsTile
+        :games="games"
+        :error="gamesError"
+        @game="(g) => go({ game: g }, true)"
+        @dates="(r) => go({ from: r.from, to: r.to }, true)"
+        @retry="fetchGames(true)"
+      />
+    </section>
 
     <div class="bar">
       <h1 class="vx-display">Past broadcasts</h1>
@@ -179,7 +197,7 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
 
     <template v-else>
       <div class="grid">
-        <VodCard v-for="v in vods" :key="v.id" :vod="v" :progress="resumeAt.get(v.id)" />
+        <VodCard v-for="v in listed" :key="v.id" :vod="v" :progress="resumeAt.get(v.id)" />
       </div>
       <div class="more">
         <VxButton v-if="hasMore" :loading="loading" @click="loadMore">Load {{ site.perPage }} more</VxButton>
@@ -200,6 +218,10 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
   .search { order: -1; flex-basis: 100%; max-width: none; }
 }
 .date-pop { display: flex; flex-direction: column; gap: 8px; padding: 8px; }
+.top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(15rem, 20rem); gap: 18px; margin-bottom: 28px; align-items: start; }
+@container vx-site (max-width: 980px) {
+  .top { grid-template-columns: minmax(0, 1fr); }
+}
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 24px 18px; }
 .sk { display: flex; flex-direction: column; gap: 8px; }
 .more { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 28px; }
