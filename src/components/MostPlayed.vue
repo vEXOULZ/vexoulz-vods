@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// The most played games under the latest VOD, as a hand of box-art cards: by how many VODs they're in, or by how long
-// they can be watched in total (the toggle, remembered in this browser). A card sets the game filter on the list
+// The most played games under the latest VOD, as a hand of box-art cards: by how long they can be watched in total
+// (the default), or by how many VODs they're in (the toggle, remembered in this browser). A card sets the game filter on the list
 // below; the game picker still has every game.
 import { learnGameColors, VxButton, VxPlaceholder, VxSegmented, VxSkeleton } from '@vexoulz/ui'
 import type { GamePlayed } from '@vexoulz/vods-core'
@@ -15,9 +15,9 @@ const emit = defineEmits<{ game: [name: string]; retry: [] }>()
 const KEY = 'vods.mostPlayedBy'
 function stored(): MostPlayedBy {
   try {
-    return localStorage.getItem(KEY) === 'time' ? 'time' : 'vods'
+    return localStorage.getItem(KEY) === 'vods' ? 'vods' : 'time'
   } catch {
-    return 'vods'
+    return 'time'
   }
 }
 const chosen = ref<MostPlayedBy>(stored())
@@ -31,8 +31,8 @@ watch(chosen, (by) => {
 const timed = computed(() => hasPlayTime(props.games ?? []))
 const by = computed<MostPlayedBy>(() => (timed.value ? chosen.value : 'vods'))
 const BY = [
-  { value: 'vods' as const, label: 'VODs' },
   { value: 'time' as const, label: 'Time' },
+  { value: 'vods' as const, label: 'VODs' },
 ]
 
 const top = computed(() => rankGames(props.games ?? [], by.value, props.limit))

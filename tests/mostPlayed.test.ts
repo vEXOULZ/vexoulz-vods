@@ -23,9 +23,9 @@ describe('rankGames', () => {
 
 describe('playTime', () => {
   it('fits a card corner', () => {
-    expect(playTime(146_186)).toBe('40 h 36 m')
-    expect(playTime(3_600)).toBe('1 h')
-    expect(playTime(3_119)).toBe('52 m')
-    expect(playTime(400 * 3_600 + 900)).toBe('400 h')
+    expect(playTime(146_186)).toBe('40h 36m')
+    expect(playTime(3_600)).toBe('1h')
+    expect(playTime(3_119)).toBe('52m')
+    expect(playTime(400 * 3_600 + 900)).toBe('400h')
   })
 })
