@@ -71,6 +71,11 @@ function onKey(e: KeyboardEvent) {
 const hoverChapter = computed(() => (hover.value ? props.timeline.chapterAt(hover.value.t) : null))
 const hoverCut = computed(() => (hover.value ? props.timeline.cutAt(hover.value.t) : null))
 const shown = computed(() => (dragging.value && hover.value ? hover.value.t : props.time))
+/** The colour of the game at the playhead, for the snail's shell (none in a "stream down" gap). */
+const shownColor = computed(() => {
+  const c = props.timeline.chapterAt(shown.value)
+  return c && c.kind !== 'gap' ? props.palette.get(c.name) : undefined
+})
 </script>
 
 <template>
@@ -117,7 +122,7 @@ const shown = computed(() => (dragging.value && hover.value ? hover.value.t : pr
       <span v-for="(s, i) in spans.slice(1)" :key="'t' + i" class="tick" :style="{ left: pct(s.start) }"></span>
       <span class="rest" :style="{ left: pct(shown) }"></span>
       <span class="played" :style="{ width: pct(shown) }"></span>
-      <SnailMarker class="head" :playing="playing" :style="{ left: pct(shown) }" />
+      <SnailMarker class="head" :playing="playing" :shell="shownColor" :style="{ left: pct(shown) }" />
       <span v-if="hover" class="tip vx-mono" :style="{ left: `${hover.x}px` }">
         {{ toClock(hover.t) }}<template v-if="hoverChapter?.kind === 'gap'"> · stream down</template><template v-else-if="hoverCut"> · cut from YouTube</template><template v-else-if="hoverChapter"> · {{ hoverChapter.name }}</template>
       </span>
