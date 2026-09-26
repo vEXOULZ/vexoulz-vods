@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // Past broadcasts: one filter bar (All resets, title search, game dropdown with every game in the archive, date
 // range; all combinable and kept in the URL), a grid of cards, and "load more". On phones the bar wraps.
+// Unfiltered, the newest VOD also gets its own panel on top, with the most played games under it as filter shortcuts.
 import {
   VxAccountMenu,
   VxButton,
@@ -17,6 +18,8 @@ import { useVodsContext } from '@vexoulz/vods-core/vue'
 import { computed, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import GamePicker from '@/components/GamePicker.vue'
+import LatestVod from '@/components/LatestVod.vue'
+import MostPlayed from '@/components/MostPlayed.vue'
 import VodCard from '@/components/VodCard.vue'
 import { loadGamesPlayed } from '@/lib/gamesPlayed'
 import { hasFilters, parseListQuery, toApiFilter, toListQuery, type ListState } from '@/lib/listQuery'
@@ -131,12 +134,20 @@ progress
   .then((all) => (resumeAt.value = new Map(all.filter((p) => isResumable(p)).map((p) => [p.vodId, p]))))
   .catch(() => undefined)
 
+// ---- the latest VOD, highlighted on top when nothing is filtered (it stays in the grid too) ----
+const latest = computed(() => (!hasFilters(state.value) && shownFrom.value === 0 && vods.value.length ? vods.value[0]! : null))
+
 const countText = computed(() => `${(shownFrom.value + vods.value.length).toLocaleString()} of ${total.value.toLocaleString()}`)
 </script>
 
 <template>
   <VxSiteShell site="vods" :nav="NAV">
     <template #account><VxAccountMenu disabled note="Sign-in comes later; progress is saved in this browser." /></template>
+
+    <section v-if="latest" class="top">
+      <LatestVod :vod="latest" :progress="resumeAt.get(latest.id)" />
+      <MostPlayed :games="games" :error="gamesError" @game="(g) => go({ game: g }, true)" @retry="fetchGames(true)" />
+    </section>
 
     <div class="bar">
       <h1 class="vx-display">Past broadcasts</h1>
@@ -200,6 +211,7 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
   .search { order: -1; flex-basis: 100%; max-width: none; }
 }
 .date-pop { display: flex; flex-direction: column; gap: 8px; padding: 8px; }
+.top { display: flex; flex-direction: column; gap: 10px; margin-bottom: 28px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 24px 18px; }
 .sk { display: flex; flex-direction: column; gap: 8px; }
 .more { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 28px; }
