@@ -3,10 +3,10 @@
 // link to that point), chapter strip, and where you stopped (from watch progress) with a bar showing how much
 // you've seen. Thumbnail and title link to the VOD; the posters sit outside those links.
 import { gamePalette, learnGameColors, VxChapterBar, VxChip, VxLink, VxMenuItem, VxPlaceholder, VxPopover, VxPosters } from '@vexoulz/ui'
-import { toClock, vodThumbnail, watchPath, type Progress, type Vod } from '@vexoulz/vods-core'
+import { boxArt, toClock, vodThumbnail, watchPath, type Progress, type Vod } from '@vexoulz/vods-core'
 import { computed, ref, watch, watchEffect } from 'vue'
 import { cutNote } from '@/lib/cuts'
-import { boxArt, gamesWithArt } from '@/lib/art'
+import { gamesWithArt } from '@/lib/art'
 
 const props = defineProps<{ vod: Vod; progress?: Progress | null }>()
 

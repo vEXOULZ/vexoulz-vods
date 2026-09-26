@@ -1,10 +1,10 @@
 <script setup lang="ts">
 // /admin/audit: every change made through the admin API (dashboard or API key), newest first.
-import { VxButton, VxCallout, VxChip, VxSkeleton, VxTable, type TableColumn } from '@vexoulz/ui'
+import { timeAgo, VxButton, VxCallout, VxChip, VxSkeleton, VxTable, type TableColumn } from '@vexoulz/ui'
 import { computed, onMounted, ref } from 'vue'
 import type { AuditEntry } from '@/admin/api'
 import AdminShell from '@/admin/AdminShell.vue'
-import { ago, stamp } from '@/admin/format'
+import { stamp } from '@/admin/format'
 import { admin } from '@/admin/session'
 import { usePoll } from '@/admin/usePoll'
 import { errorMessage } from '@/lib/errors'
@@ -69,7 +69,7 @@ onMounted(() => (document.title = 'Audit log · Admin · vods.vexoulz.net'))
     <div v-if="!data && !error" class="sk" aria-busy="true"><VxSkeleton v-for="i in 6" :key="i" h="36px" /></div>
     <template v-else-if="data">
       <VxTable :columns="columns" :rows="rows" row-key="id" manual label="Audit log" empty="Nothing changed yet.">
-        <template #cell-at="{ row }"><span class="when" :title="stamp(row.at)">{{ ago(row.at) }}</span></template>
+        <template #cell-at="{ row }"><span class="when" :title="stamp(row.at)">{{ timeAgo(row.at) }}</span></template>
         <template #cell-actor="{ row }"><VxChip :tone="row.actor === 'password' ? 'accent' : 'default'">{{ row.actor === 'password' ? 'dashboard' : 'API key' }}</VxChip></template>
         <template #cell-target="{ row }">
           <RouterLink v-if="targetLink(row.target)" :to="targetLink(row.target)!">{{ row.target }}</RouterLink>

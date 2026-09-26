@@ -1,14 +1,6 @@
 // Real images: YouTube thumbnails for VODs and Twitch box art for games. Both CDNs allow CORS, which lets
 // vexoulz-ui read the box art's colour (learnGameColors).
-import type { Chapter } from '@vexoulz/vods-core'
-
-/** Box art at `width` (3:4). Handles Twitch's `{width}x{height}` templates and URLs with a size baked in. */
-export function boxArt(url: string | null | undefined, width = 144): string | null {
-  if (!url) return null
-  const size = `${width}x${Math.round((width * 4) / 3)}`
-  if (url.includes('{width}x{height}')) return url.replace('{width}x{height}', size)
-  return url.replace(/-\d+x\d+(\.\w+)(\?.*)?$/, `-${size}$1$2`)
-}
+import { boxArt, type Chapter } from '@vexoulz/vods-core'
 
 export interface GameArt {
   name: string

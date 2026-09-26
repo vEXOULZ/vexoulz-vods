@@ -3,9 +3,8 @@
 // (the default), or by how many VODs they're in (the toggle, remembered in this browser). A card sets the game filter on the list
 // below; the game picker still has every game.
 import { learnGameColors, VxButton, VxPlaceholder, VxSegmented, VxSkeleton } from '@vexoulz/ui'
-import type { GamePlayed } from '@vexoulz/vods-core'
+import { boxArt, type GamePlayed } from '@vexoulz/vods-core'
 import { computed, ref, watch, watchEffect } from 'vue'
-import { boxArt } from '@/lib/art'
 import { relativeDay } from '@/lib/dates'
 import { hasPlayTime, playTime, rankGames, type MostPlayedBy } from '@/lib/mostPlayed'
 

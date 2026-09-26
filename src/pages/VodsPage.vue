@@ -12,7 +12,7 @@ import {
   VxSkeleton,
 } from '@vexoulz/ui'
 import { isResumable, type GamePlayed, type Progress, type Vod } from '@vexoulz/vods-core'
-import { useVodsContext } from '@vexoulz/vods-core/vue'
+import { useVods, useVodsContext } from '@vexoulz/vods-core/vue'
 import { computed, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import GamePicker from '@/components/GamePicker.vue'
@@ -36,41 +36,14 @@ function go(patch: Partial<ListState>, push = false) {
 }
 
 // ---- list: pages [first .. last] of the current filters ----
-const vods = shallowRef<Vod[]>([])
-const total = ref(0)
-const loading = ref(false)
-const error = ref<string | null>(null)
-let lastPage = 0
-let filterKey = ''
-let ctrl: AbortController | undefined
+const { vods, total, page, loading, error, refresh } = useVods(
+  () => ({ ...toApiFilter(state.value), page: state.value.page, perPage: site.perPage }),
+  { append: true },
+)
 
-async function load(s: ListState) {
-  const key = JSON.stringify({ ...s, page: 0 })
-  const append = key === filterKey && s.page === lastPage + 1 && vods.value.length > 0
-  ctrl?.abort()
-  const mine = (ctrl = new AbortController())
-  loading.value = true
-  error.value = null
-  if (!append) vods.value = []
-  try {
-    const res = await client.listVods({ ...toApiFilter(s), page: s.page, perPage: site.perPage }, mine.signal)
-    if (mine.signal.aborted) return
-    vods.value = append ? [...vods.value, ...res.vods] : res.vods
-    total.value = res.total
-    lastPage = s.page
-    filterKey = key
-  } catch (e) {
-    if (!mine.signal.aborted) error.value = (e as Error).message || 'Something went wrong'
-  } finally {
-    if (!mine.signal.aborted) loading.value = false
-  }
-}
-watch(state, load, { immediate: true, deep: true })
-onUnmounted(() => ctrl?.abort())
-
-const shownFrom = computed(() => (lastPage - Math.ceil(vods.value.length / site.perPage)) * site.perPage)
+const shownFrom = computed(() => (page.value - Math.ceil(vods.value.length / site.perPage)) * site.perPage)
 const hasMore = computed(() => shownFrom.value + vods.value.length < total.value)
-const loadMore = () => go({ page: lastPage + 1 })
+const loadMore = () => go({ page: page.value + 1 })
 
 // ---- search (debounced into the URL) ----
 const titleDraft = ref(state.value.title)
@@ -168,8 +141,8 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
     </div>
 
     <VxCallout v-if="error" tone="error" title="Couldn't load the VODs">
-      {{ error }}
-      <template #actions><VxButton size="sm" @click="load(state)">Try again</VxButton></template>
+      {{ error.message || 'Something went wrong' }}
+      <template #actions><VxButton size="sm" @click="refresh">Try again</VxButton></template>
     </VxCallout>
 
     <div v-else-if="loading && !vods.length" class="grid" aria-busy="true">

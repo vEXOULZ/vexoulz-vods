@@ -1,10 +1,9 @@
 <script setup lang="ts">
 // Pick a chapter's game from Twitch's categories (GET /admin/twitch/games). Shows the current game with its box art;
 // typing searches, arrows + Enter pick, "No category" clears it.
-import { VxButton, VxSpinner } from '@vexoulz/ui'
-import { NO_CATEGORY } from '@vexoulz/vods-core'
+import { VxButton, VxInput, VxSpinner } from '@vexoulz/ui'
+import { boxArt, NO_CATEGORY } from '@vexoulz/vods-core'
 import { computed, nextTick, ref, useId, watch } from 'vue'
-import { boxArt } from '@/lib/art'
 import type { TwitchGame } from './api'
 import type { GameValue } from './edits'
 import { admin } from './session'
@@ -19,7 +18,7 @@ const results = ref<TwitchGame[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
 const active = ref(0)
-const input = ref<HTMLInputElement | null>(null)
+const input = ref<InstanceType<typeof VxInput> | null>(null)
 const listId = useId()
 
 const options = computed<GameValue[]>(() => [
@@ -98,10 +97,11 @@ function onBlur(e: FocusEvent) {
       <span class="name" :class="{ 'vx-muted': !model.name }">{{ model.name ?? NO_CATEGORY }}</span>
     </button>
     <template v-else>
-      <input
+      <VxInput
         ref="input"
         v-model="query"
-        class="vx-input search"
+        class="search"
+        :invalid="props.invalid"
         role="combobox"
         :aria-label="`Search Twitch categories for ${label ?? 'this chapter'}`"
         aria-autocomplete="list"
@@ -138,7 +138,7 @@ function onBlur(e: FocusEvent) {
 <style scoped>
 .game { position: relative; display: flex; align-items: center; gap: 4px; min-width: 0; }
 .current { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; text-align: left; cursor: pointer; }
-.is-invalid .current, .is-invalid .search { border-color: var(--vx-bad); }
+.is-invalid .current { border-color: var(--vx-bad); }
 .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .art { width: 18px; height: 24px; border-radius: 2px; flex: none; object-fit: cover; }
 .ph { background: var(--vx-line); }

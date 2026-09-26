@@ -15,6 +15,7 @@ import {
   clamp,
 } from '@vexoulz/ui'
 import {
+  boxArt,
   mountYouTube,
   toClock,
   WatchPlayer,
@@ -33,7 +34,7 @@ import { useChatSettings } from '@/composables/useChatSettings'
 import { useFullscreen } from '@/composables/useFullscreen'
 import { useShortcuts, type Shortcut } from '@/composables/useShortcuts'
 import { cutNote, unplayable } from '@/lib/cuts'
-import { boxArt, gamesWithArt } from '@/lib/art'
+import { gamesWithArt } from '@/lib/art'
 import VodsShell from '@/components/VodsShell.vue'
 
 const props = withDefaults(
@@ -185,8 +186,7 @@ useShortcuts(() => shortcuts.value)
 </script>
 
 <template>
-  <VodsShell fill sky="dim">
-    <template v-if="theater" #header><span class="no-header" hidden></span></template>
+  <VodsShell fill :header="!theater" sky="dim">
 
     <div class="watch" :class="{ nochat: !chat.open }" :style="{ '--chat-w': `${chat.width}%` }">
       <section class="stage">

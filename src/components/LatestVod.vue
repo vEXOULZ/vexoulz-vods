@@ -3,9 +3,9 @@
 // uploaded in, and every chapter with its game, start and length (each a link to that point). Resumes where you
 // stopped, if you did.
 import { gamePalette, learnGameColors, VxButton, VxChapterBar, VxChip, VxLink, VxPlaceholder, VxPosters } from '@vexoulz/ui'
-import { toClock, vodThumbnail, watchPath, type Progress, type Vod } from '@vexoulz/vods-core'
+import { boxArt, toClock, vodThumbnail, watchPath, type Progress, type Vod } from '@vexoulz/vods-core'
 import { computed, ref, watch, watchEffect } from 'vue'
-import { boxArt, gamesWithArt } from '@/lib/art'
+import { gamesWithArt } from '@/lib/art'
 import { relativeDay } from '@/lib/dates'
 
 const props = defineProps<{ vod: Vod; progress?: Progress | null }>()

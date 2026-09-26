@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { VxButton, VxCallout, VxChip, VxSkeleton, VxStatusDot, useToast } from '@vexoulz/ui'
+import { timeAgo, VxButton, VxCallout, VxChip, VxSkeleton, VxStatusDot, useToast } from '@vexoulz/ui'
 import { computed, onMounted } from 'vue'
 import { JOB_STATES } from '@/admin/api'
 import AdminShell from '@/admin/AdminShell.vue'
 import JobsTable from '@/admin/JobsTable.vue'
-import { ago, STATE_TONE } from '@/admin/format'
+import { STATE_TONE } from '@/admin/format'
 import { admin } from '@/admin/session'
 import { usePoll } from '@/admin/usePoll'
 import { errorMessage } from '@/lib/errors'
@@ -24,21 +24,21 @@ const tiles = computed(() => {
       name: 'Worker',
       status: (h.worker.ok ? 'ok' : 'warn') as Dot,
       text: h.worker.ok ? `${h.worker.runningJobs} running` : 'Not healthy',
-      sub: h.worker.startedAt ? `up since ${ago(h.worker.startedAt)}` : '',
+      sub: h.worker.startedAt ? `up since ${timeAgo(h.worker.startedAt)}` : '',
     },
     { name: 'Archive API', status: (h.api?.ok ? 'ok' : 'warn') as Dot, text: h.api?.ok ? 'Reachable' : 'Unreachable', sub: '' },
     {
       name: 'YouTube',
       status: (!yt ? 'off' : yt.authorized && yt.valid ? 'ok' : 'warn') as Dot,
       text: !yt ? 'Unknown' : !yt.authorized ? 'Not connected' : yt.valid ? 'Connected' : 'Token invalid',
-      sub: yt?.error ?? (yt?.checkedAt ? `checked ${ago(yt.checkedAt)}` : ''),
+      sub: yt?.error ?? (yt?.checkedAt ? `checked ${timeAgo(yt.checkedAt)}` : ''),
       action: yt && !(yt.authorized && yt.valid) ? 'connect' : undefined,
     },
     {
       name: 'Stream',
       status: (h.live?.live ? 'live' : 'off') as Dot,
       text: h.live?.live ? 'Live' : 'Offline',
-      sub: h.live?.live && h.live.startedAt ? `started ${ago(h.live.startedAt)}` : '',
+      sub: h.live?.live && h.live.startedAt ? `started ${timeAgo(h.live.startedAt)}` : '',
     },
   ]
 })

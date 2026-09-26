@@ -4,11 +4,11 @@
 import { VxAccountMenu, VxSiteShell } from '@vexoulz/ui'
 import { NAV } from '@/lib/nav'
 
-defineProps<{ fill?: boolean; sky?: 'full' | 'dim' | 'off' }>()
+withDefaults(defineProps<{ fill?: boolean; header?: boolean; sky?: 'full' | 'dim' | 'off' }>(), { header: true })
 </script>
 
 <template>
-  <VxSiteShell site="vods" :nav="NAV" :fill="fill" :sky="sky">
+  <VxSiteShell site="vods" :nav="NAV" :fill="fill" :header="header" :sky="sky">
     <template v-for="(_, name) in $slots" #[name]="scope"><slot :name="name" v-bind="scope ?? {}"></slot></template>
     <template v-if="!$slots.account" #account>
       <VxAccountMenu disabled note="Sign-in comes later; progress is saved in this browser." />

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // /admin/vods?q=: find a VOD to edit (title search on the public API, or open an id), and add ones the monitor missed.
 import { VxButton, VxCallout, VxChip, VxDialog, VxField, VxInput, VxSkeleton, VxTable, useToast, type TableColumn } from '@vexoulz/ui'
-import { toClock, type Vod } from '@vexoulz/vods-core'
-import { useVodsContext } from '@vexoulz/vods-core/vue'
+import { toClock } from '@vexoulz/vods-core'
+import { useVods } from '@vexoulz/vods-core/vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AdminShell from '@/admin/AdminShell.vue'
@@ -14,45 +14,21 @@ const PER_PAGE = 30
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
-const { client } = useVodsContext()
 
 const query = computed(() => (typeof route.query.q === 'string' ? route.query.q : ''))
 const draft = ref(query.value)
 watchDebounced(draft, (v) => router.replace({ query: v.trim() ? { q: v.trim() } : {} }), 300)
 
-const vods = ref<Vod[]>([])
-const total = ref(0)
-const page = ref(1)
-const loading = ref(false)
-const error = ref<string | null>(null)
-let ctrl: AbortController | null = null
-
-async function load(reset: boolean) {
-  ctrl?.abort()
-  const mine = (ctrl = new AbortController())
-  if (reset) page.value = 1
-  loading.value = true
-  try {
-    const q = query.value
-    // A bare id opens that VOD's row even if the title doesn't contain it.
-    const res = await client.listVods({ title: idLike.value ? undefined : q, page: page.value, perPage: PER_PAGE }, mine.signal)
-    vods.value = reset ? res.vods : [...vods.value, ...res.vods]
-    total.value = res.total
-    error.value = null
-  } catch (e) {
-    if (mine.signal.aborted) return
-    error.value = errorMessage(e)
-  } finally {
-    if (ctrl === mine) loading.value = false
-  }
-}
-watch(query, () => load(true), { immediate: true })
-function more() {
-  page.value++
-  load(false)
-}
-
 const idLike = computed(() => /^\d{6,}$/.test(query.value) ? query.value : null)
+
+const page = ref(1)
+watch(query, () => (page.value = 1))
+const { vods, total, loading, error, refresh } = useVods(
+  // A bare id opens that VOD's row even if the title doesn't contain it.
+  () => ({ title: idLike.value ? undefined : query.value, page: page.value, perPage: PER_PAGE }),
+  { append: true },
+)
+const more = () => page.value++
 
 const columns: TableColumn[] = [
   { key: 'id', label: 'Id', mono: true },
@@ -109,8 +85,8 @@ onMounted(() => (document.title = 'VODs · Admin · vods.vexoulz.net'))
     </div>
 
     <VxCallout v-if="error" tone="error" title="Couldn't load the VODs">
-      {{ error }}
-      <template #actions><VxButton size="sm" @click="load(true)">Try again</VxButton></template>
+      {{ errorMessage(error) }}
+      <template #actions><VxButton size="sm" @click="refresh">Try again</VxButton></template>
     </VxCallout>
     <div v-else-if="loading && !vods.length" class="sk" aria-busy="true"><VxSkeleton v-for="i in 6" :key="i" h="36px" /></div>
     <template v-else>
