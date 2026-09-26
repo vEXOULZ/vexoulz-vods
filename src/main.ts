@@ -3,6 +3,7 @@ import '@vexoulz/ui/style.css'
 import './styles.css'
 
 import { createVods } from '@vexoulz/vods-core/vue'
+import { VxBuild } from '@vexoulz/ui'
 import { createApp } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 
@@ -46,4 +47,4 @@ setExpiredHandler(() => {
   if (here.path.startsWith('/admin') && !here.meta.public) router.push({ path: '/admin/login', query: { next: here.fullPath } })
 })
 
-createApp(App).use(router).use(createVods(vodsConfig)).mount('#app')
+createApp(App).use(router).use(VxBuild, { commit: __COMMIT__ }).use(createVods(vodsConfig)).mount('#app')
