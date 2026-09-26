@@ -5,6 +5,7 @@ import { clamp } from '@vexoulz/ui'
 import { toClock, type PartStatus, type Span, type Timeline } from '@vexoulz/vods-core'
 import { computed, ref } from 'vue'
 import { unplayable } from '@/lib/cuts'
+import SnailMarker from './SnailMarker.vue'
 
 const props = defineProps<{
   timeline: Timeline
@@ -17,6 +18,8 @@ const props = defineProps<{
   partLabel?: (i: number) => string
   /** Colours per game (gamePalette of the VOD), shared with the posters. */
   palette: Map<string, string>
+  /** The snail on the playhead crawls while this is on. */
+  playing?: boolean
 }>()
 const emit = defineEmits<{ seek: [t: number] }>()
 
@@ -114,7 +117,7 @@ const shown = computed(() => (dragging.value && hover.value ? hover.value.t : pr
       <span v-for="(s, i) in spans.slice(1)" :key="'t' + i" class="tick" :style="{ left: pct(s.start) }"></span>
       <span class="rest" :style="{ left: pct(shown) }"></span>
       <span class="played" :style="{ width: pct(shown) }"></span>
-      <span class="head" :style="{ left: pct(shown) }"></span>
+      <SnailMarker class="head" :playing="playing" :style="{ left: pct(shown) }" />
       <span v-if="hover" class="tip vx-mono" :style="{ left: `${hover.x}px` }">
         {{ toClock(hover.t) }}<template v-if="hoverChapter?.kind === 'gap'"> · stream down</template><template v-else-if="hoverCut"> · cut from YouTube</template><template v-else-if="hoverChapter"> · {{ hoverChapter.name }}</template>
       </span>
@@ -145,7 +148,8 @@ const shown = computed(() => (dragging.value && hover.value ? hover.value.t : pr
    what's been played. */
 .rest { position: absolute; right: 0; top: 0; bottom: 0; background: rgb(0 0 0 / 0.55); pointer-events: none; }
 .played { position: absolute; left: 0; bottom: -4px; height: 2px; background: var(--vx-accent); border-radius: 1px; pointer-events: none; }
-.head { position: absolute; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--vx-accent); box-shadow: 0 0 0 3px rgb(0 0 0 / 0.6); pointer-events: none; }
+/* The snail's head sits on the time, its foot on the bar. */
+.head { position: absolute; bottom: -2px; width: 24px; height: 24px; margin-left: -22px; pointer-events: none; filter: drop-shadow(0 0 2px rgb(0 0 0 / 0.7)); }
 .tip {
   position: absolute; bottom: calc(100% + 22px); transform: translateX(-50%); white-space: nowrap; pointer-events: none;
   font-size: 11px; padding: 2px 6px; border-radius: var(--vx-radius-sm); background: var(--vx-pop); border: 1px solid var(--vx-line);

@@ -237,6 +237,7 @@ useShortcuts(() => shortcuts.value)
             :part-index="partIndex"
             :part-label="partLabel"
             :palette="palette"
+            :playing="playing"
             @seek="seek"
           />
           <div class="row">
