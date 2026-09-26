@@ -34,17 +34,16 @@ watchEffect(() => {
 
 <template>
   <article class="latest vx-panel">
-    <VxLink :to="watchPath(vod, progress?.t)" class="thumb" :aria-label="title" tabindex="-1">
-      <div class="vx-ring img">
-        <img v-if="thumb && !broken" :src="thumb" alt="" decoding="async" @error="broken = true" />
-        <VxPlaceholder v-else label="no thumbnail" ratio="16 / 9" />
-      </div>
-      <span class="dur vx-mono">{{ toClock(vod.duration) }}</span>
-      <span v-if="progress" class="watched" :style="{ width: `${watched * 100}%` }"></span>
-      <VxChapterBar v-if="vod.chapters.length" class="bar" :chapters="vod.chapters" :palette="palette" />
-    </VxLink>
-
-    <div class="info">
+    <div class="main">
+      <VxLink :to="watchPath(vod, progress?.t)" class="thumb" :aria-label="title" tabindex="-1">
+        <div class="vx-ring img">
+          <img v-if="thumb && !broken" :src="thumb" alt="" decoding="async" @error="broken = true" />
+          <VxPlaceholder v-else label="no thumbnail" ratio="16 / 9" />
+        </div>
+        <span class="dur vx-mono">{{ toClock(vod.duration) }}</span>
+        <span v-if="progress" class="watched" :style="{ width: `${watched * 100}%` }"></span>
+        <VxChapterBar v-if="vod.chapters.length" class="bar" :chapters="vod.chapters" :palette="palette" />
+      </VxLink>
       <div class="vx-eyebrow">Latest broadcast · {{ relativeDay(vod.createdAt) }}</div>
       <h2 class="title"><VxLink :to="watchPath(vod, progress?.t)">{{ title }}</VxLink></h2>
       <div class="meta">
@@ -54,8 +53,17 @@ watchEffect(() => {
         <VxChip v-if="cut" k="cut" title="Chapters cut from the YouTube uploads">{{ cut }}</VxChip>
         <VxChip v-if="vod.drive.length" tone="ok">download</VxChip>
       </div>
+      <div class="actions">
+        <VxLink :to="watchPath(vod, progress?.t)" class="vx-btn is-primary">
+          {{ progress ? `▶ Resume at ${toClock(progress.t)}` : '▶ Watch' }}
+        </VxLink>
+        <VxLink v-if="progress" :to="watchPath(vod, 0)" class="vx-btn">From the start</VxLink>
+      </div>
+    </div>
 
-      <ol v-if="vod.chapters.length" class="chapters" :aria-label="`Chapters · ${vod.chapters.length}`">
+    <div v-if="vod.chapters.length" class="side">
+      <div class="vx-eyebrow">Chapters · {{ vod.chapters.length }}</div>
+      <ol class="chapters">
         <li v-for="(c, i) in vod.chapters" :key="i">
           <VxLink v-if="!c.restricted" :to="watchPath(vod, c.start)" class="chapter">
             <VxPosters :games="[{ name: c.name, image: boxArt(c.image) ?? undefined, color: palette.get(c.name) }]" mode="row" :size="22" />
@@ -71,23 +79,24 @@ watchEffect(() => {
           </span>
         </li>
       </ol>
-
-      <div class="actions">
-        <VxLink :to="watchPath(vod, progress?.t)" class="vx-btn is-primary">
-          {{ progress ? `▶ Resume at ${toClock(progress.t)}` : '▶ Watch' }}
-        </VxLink>
-        <VxLink v-if="progress" :to="watchPath(vod, 0)" class="vx-btn">From the start</VxLink>
-      </div>
     </div>
   </article>
 </template>
 
 <style scoped>
-.latest { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; padding: 14px; }
+/* Video, title and details on the left; the chapter list beside it, as tall as the left side and scrolling. */
+.latest { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 18px; padding: 14px; }
+.main { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.side { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; }
+.chapters {
+  list-style: none; margin: 0; padding: 0; display: grid; align-content: start; gap: 2px;
+  flex: 1 1 0; min-height: 0; overflow-y: auto; scrollbar-width: thin;
+}
 @container vx-site (max-width: 760px) {
   .latest { grid-template-columns: minmax(0, 1fr); }
+  .chapters { flex: none; max-height: 16rem; }
 }
-.thumb { display: block; position: relative; color: inherit; align-self: start; }
+.thumb { display: block; position: relative; color: inherit; margin-bottom: 4px; }
 .img { border-radius: var(--vx-radius); overflow: hidden; aspect-ratio: 16 / 9; background: var(--vx-surface); }
 .img img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .dur {
@@ -96,12 +105,11 @@ watchEffect(() => {
 }
 .watched { position: absolute; left: 0; bottom: 4px; height: 3px; background: var(--vx-accent); z-index: 1; }
 .bar { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 0 0 var(--vx-radius) var(--vx-radius); overflow: hidden; }
-.info { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.title { margin: 0; font-size: 20px; line-height: 1.3; overflow-wrap: anywhere; }
+.title { margin: 0; font-size: 19px; line-height: 1.3; overflow-wrap: anywhere; }
 .title a { color: var(--vx-ink); text-decoration: none; }
 .title a:hover { color: var(--vx-accent); }
 .meta { display: flex; flex-wrap: wrap; gap: 6px; }
-.chapters { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 13.5rem; overflow-y: auto; scrollbar-width: thin; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .chapter {
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px;
   padding: 4px 6px; border-radius: var(--vx-radius-sm); color: var(--vx-ink); text-decoration: none; font-size: 13px;
@@ -110,8 +118,6 @@ a.chapter:hover { background: var(--vx-surface); }
 a.chapter:hover .name { color: var(--vx-accent); }
 .chapter.is-cut { opacity: 0.6; }
 .name { overflow-wrap: anywhere; line-height: 1.3; }
-.at, .len { white-space: nowrap; }
-.at, .len { font-size: 12px; }
+.at, .len { font-size: 12px; white-space: nowrap; }
 .len::before { content: '· '; }
-.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; }
 </style>
