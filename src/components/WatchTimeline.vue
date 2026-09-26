@@ -3,7 +3,7 @@
 // can't play hatched red, part labels above. Click, drag or use the arrow keys to seek (VOD seconds).
 import { clamp } from '@vexoulz/ui'
 import { toClock, type PartStatus, type Span, type Timeline } from '@vexoulz/vods-core'
-import { computed, onUnmounted, ref } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { unplayable } from '@/lib/cuts'
 import SnailMarker, { type SnailMode } from './SnailMarker.vue'
 
@@ -40,13 +40,29 @@ const dragging = ref(false)
 // The snail floats while the time is being moved, and a moment after (so a click or a key shows it too).
 const floating = ref(false)
 let settle: ReturnType<typeof setTimeout> | undefined
-function seekTo(t: number) {
+function float() {
   floating.value = true
   clearTimeout(settle)
-  settle = setTimeout(() => (floating.value = false), 700)
+  settle = setTimeout(() => (floating.value = false), 500)
+}
+function seekTo(t: number) {
+  float()
   emit('seek', t)
 }
 onUnmounted(() => clearTimeout(settle))
+
+// A jump in the reported time that playing can't explain is a seek made somewhere else (YouTube's own progress bar,
+// the part picker): the snail floats for those too.
+let last = { t: props.time, at: performance.now() }
+watch(
+  () => props.time,
+  (t) => {
+    const now = performance.now()
+    const played = props.playing ? ((now - last.at) / 1000) * (props.rate ?? 1) : 0
+    if (Math.abs(t - last.t - played) > 2) float()
+    last = { t, at: now }
+  },
+)
 
 function timeAt(clientX: number): number {
   const r = track.value!.getBoundingClientRect()
