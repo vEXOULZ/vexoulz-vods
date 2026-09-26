@@ -51,12 +51,5 @@ export function toApiFilter(s: ListState): Omit<VodListOptions, 'page' | 'perPag
 
 export const hasFilters = (s: ListState) => !!(s.title || s.game || s.from || s.to)
 
-/** Watch URL for a VOD: its VOD uploads, else its live uploads, else the auto route (which explains what's missing). */
-export function watchPath(vod: { id: string; uploads: { type: 'vod' | 'live' }[] }, t?: number): string {
-  const base = vod.uploads.some((u) => u.type === 'vod')
-    ? `/vods/${vod.id}`
-    : vod.uploads.some((u) => u.type === 'live')
-      ? `/live/${vod.id}`
-      : `/youtube/${vod.id}`
-  return t && t > 0 ? `${base}?t=${Math.floor(t)}s` : base
-}
+/** The watch page's path (shared with vexoulz.net's stream card). */
+export { watchPath } from '@vexoulz/vods-core'
