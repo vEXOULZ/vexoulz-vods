@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { VxChip, VxTable, type TableColumn } from '@vexoulz/ui'
+import { timeAgo, VxChip, VxTable, type TableColumn } from '@vexoulz/ui'
 import { computed } from 'vue'
 import type { Job } from './api'
-import { ago, stamp, stepPosition, STATE_TONE } from './format'
+import { stamp, stepPosition, STATE_TONE } from './format'
 
 const props = withDefaults(defineProps<{ jobs: Job[]; empty?: string }>(), { empty: 'No jobs.' })
 
@@ -39,7 +39,7 @@ const rows = computed(() => props.jobs.map((j) => ({ ...j, _pos: stepPosition(j)
       <div v-if="row.lastError && row.state === 'failed'" class="err" :title="row.lastError">{{ row.lastError }}</div>
     </template>
     <template #cell-updatedAt="{ row }">
-      <span :title="stamp(row.updatedAt)">{{ ago(row.updatedAt) }}</span>
+      <span :title="stamp(row.updatedAt)">{{ timeAgo(row.updatedAt) }}</span>
     </template>
   </VxTable>
 </template>

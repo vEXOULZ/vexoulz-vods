@@ -11,25 +11,6 @@ export const STATE_TONE: Record<JobState, Tone> = {
   cancelled: 'default',
 }
 
-/** "12s ago", "5 min ago", "3 h ago", then a date. */
-export function ago(iso: string | null | undefined, now = Date.now()): string {
-  if (!iso) return '—'
-  const t = Date.parse(iso)
-  if (Number.isNaN(t)) return '—'
-  const s = Math.round((now - t) / 1000)
-  if (s < 0) return `in ${until(-s)}`
-  if (s < 60) return `${s}s ago`
-  if (s < 3600) return `${Math.floor(s / 60)} min ago`
-  if (s < 86400) return `${Math.floor(s / 3600)} h ago`
-  return new Date(t).toISOString().slice(0, 10)
-}
-
-function until(s: number): string {
-  if (s < 60) return `${s}s`
-  if (s < 3600) return `${Math.floor(s / 60)} min`
-  return `${Math.floor(s / 3600)} h`
-}
-
 /** Local date and time, for tooltips and detail views. */
 export const stamp = (iso: string | null | undefined): string => (iso ? new Date(iso).toLocaleString() : '—')
 

@@ -2,16 +2,14 @@
 // Game filter for the list page: a dropdown of every game in the archive (most played first, with how many VODs
 // each is in), with a filter field for long lists. Empty value = all games.
 import { learnGameColors, VxButton, VxInput, VxMenuItem, VxPopover, VxPosters } from '@vexoulz/ui'
-import type { GamePlayed } from '@vexoulz/vods-core'
-import { computed, nextTick, ref } from 'vue'
-import { boxArt } from '@/lib/art'
+import { boxArt, type GamePlayed } from '@vexoulz/vods-core'
+import { computed, ref } from 'vue'
 
 const props = defineProps<{ games: GamePlayed[] | null; error?: string | null }>()
 const model = defineModel<string>({ required: true })
 const emit = defineEmits<{ retry: [] }>()
 
 const filter = ref('')
-const input = ref<InstanceType<typeof VxInput> | null>(null)
 const shown = computed(() => {
   const q = filter.value.trim().toLowerCase()
   const all = props.games ?? []
@@ -20,11 +18,9 @@ const shown = computed(() => {
 const current = computed(() => props.games?.find((g) => g.name === model.value) ?? null)
 const art = (g: GamePlayed) => boxArt(g.image) ?? undefined
 
-async function opened() {
+function opened() {
   filter.value = ''
   if (props.games) learnGameColors(props.games.map((g) => ({ name: g.name, image: art(g) })))
-  await nextTick()
-  input.value?.focus()
 }
 function pick(name: string, close: () => void) {
   model.value = name
@@ -43,7 +39,7 @@ function pick(name: string, close: () => void) {
     </template>
     <template #default="{ close }">
       <div class="head">
-        <VxInput ref="input" v-model="filter" type="search" placeholder="Find a game…" clearable />
+        <VxInput v-model="filter" autofocus type="search" placeholder="Find a game…" clearable />
       </div>
       <p v-if="error" class="note">
         Couldn't load the games: {{ error }}

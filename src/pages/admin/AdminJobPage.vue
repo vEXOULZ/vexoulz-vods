@@ -1,10 +1,10 @@
 <script setup lang="ts">
 // /admin/jobs/:id: one job's steps, controls and log. Polls the job every 3 s and appends new events.
-import { VxButton, VxCallout, VxCheckbox, VxChip, VxDialog, VxProgress, VxSkeleton, useToast } from '@vexoulz/ui'
+import { timeAgo, VxButton, VxCallout, VxCheckbox, VxChip, VxDialog, VxProgress, VxSkeleton, useToast } from '@vexoulz/ui'
 import { computed, onMounted, ref, shallowRef, watch } from 'vue'
 import { AdminApiError, jobActions, type ActionResult, type JobEvent } from '@/admin/api'
 import AdminShell from '@/admin/AdminShell.vue'
-import { ago, stamp, stepStates, STATE_TONE } from '@/admin/format'
+import { stamp, stepStates, STATE_TONE } from '@/admin/format'
 import { admin } from '@/admin/session'
 import { usePoll } from '@/admin/usePoll'
 import { errorMessage } from '@/lib/errors'
@@ -139,9 +139,9 @@ onMounted(() => (document.title = `Job ${props.id} · Admin · vods.vexoulz.net`
             </dd>
           </div>
           <div><dt>Attempts</dt><dd class="vx-mono">{{ job.attempts }}</dd></div>
-          <div><dt>Created</dt><dd :title="stamp(job.createdAt)">{{ ago(job.createdAt) }}</dd></div>
-          <div><dt>Updated</dt><dd :title="stamp(job.updatedAt)">{{ ago(job.updatedAt) }}</dd></div>
-          <div v-if="job.notBefore && job.state === 'queued'"><dt>Next try</dt><dd :title="stamp(job.notBefore)">{{ ago(job.notBefore) }}</dd></div>
+          <div><dt>Created</dt><dd :title="stamp(job.createdAt)">{{ timeAgo(job.createdAt) }}</dd></div>
+          <div><dt>Updated</dt><dd :title="stamp(job.updatedAt)">{{ timeAgo(job.updatedAt) }}</dd></div>
+          <div v-if="job.notBefore && job.state === 'queued'"><dt>Next try</dt><dd :title="stamp(job.notBefore)">{{ timeAgo(job.notBefore) }}</dd></div>
         </dl>
         <VxCallout v-if="job.lastError" :tone="job.state === 'failed' ? 'error' : 'warn'" title="Last error">
           <pre class="error-text">{{ job.lastError }}</pre>

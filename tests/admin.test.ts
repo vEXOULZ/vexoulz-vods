@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { AdminApiError, AdminClient, jobActions, type Job } from '@/admin/api'
-import { ago, stepPosition, stepStates } from '@/admin/format'
+import { stepPosition, stepStates } from '@/admin/format'
 
 function fakeFetch(status: number, body: unknown, headers: Record<string, string> = {}) {
   return vi.fn(async (_url: string, _init?: RequestInit) =>
@@ -72,11 +72,4 @@ describe('job helpers', () => {
     expect(jobActions({ state: 'failed' }).retry).toBe(true)
   })
 
-  it('formats relative times', () => {
-    const now = Date.parse('2026-09-25T12:00:00Z')
-    expect(ago('2026-09-25T11:59:30Z', now)).toBe('30s ago')
-    expect(ago('2026-09-25T11:00:00Z', now)).toBe('1 h ago')
-    expect(ago('2026-09-20T11:00:00Z', now)).toBe('2026-09-20')
-    expect(ago(null, now)).toBe('—')
-  })
 })

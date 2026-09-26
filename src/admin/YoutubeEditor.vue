@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // A VOD's YouTube parts: video id (paste a URL or the id), vod/live set, part number, duration. Existing videos keep
 // their thumbnail; leave duration empty to keep the archive's (or while YouTube is processing).
-import { VxButton, VxCallout, VxSelect, useToast, type Option } from '@vexoulz/ui'
+import { VxInput, VxButton, VxCallout, VxSelect, useToast, type Option } from '@vexoulz/ui'
 import type { AdminVod } from './api'
 import { newYoutube, youtubeDrafts, youtubeEdits, youtubeErrors, youtubeId, type YoutubeDraft } from './edits'
 import { admin } from './session'
@@ -45,9 +45,10 @@ function setId(r: YoutubeDraft, value: string) {
           <img :src="r.thumbnail" alt="" loading="lazy" />
         </a>
         <span v-else class="thumb ph" aria-hidden="true" />
-        <input
-          class="vx-input vx-mono id"
-          :value="r.id"
+        <VxInput
+          class="id"
+          mono
+          :model-value="r.id"
           :aria-label="`Part ${i + 1} video id`"
           placeholder="Video id or YouTube URL"
           @change="setId(r, ($event.target as HTMLInputElement).value)"
@@ -55,7 +56,7 @@ function setId(r: YoutubeDraft, value: string) {
         <VxSelect v-model="r.type" :options="TYPES" width="96px" />
         <label class="part">
           <span class="vx-muted">Part</span>
-          <input v-model.number="r.part" class="vx-input vx-mono num" type="number" min="1" step="1" :aria-label="`Row ${i + 1} part number`" />
+          <VxInput v-model.number="r.part" class="num" mono type="number" min="1" step="1" :aria-label="`Row ${i + 1} part number`" />
         </label>
         <TimeInput v-model="r.duration" optional placeholder="duration" :label="`Part ${i + 1} duration`" />
         <VxButton variant="ghost" icon :label="`Remove row ${i + 1}`" @click="remove(r)">×</VxButton>
@@ -84,9 +85,9 @@ function setId(r: YoutubeDraft, value: string) {
 .thumb { width: 64px; aspect-ratio: 16 / 9; border-radius: 3px; overflow: hidden; flex: none; }
 .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .ph { background: var(--vx-line); }
-.id { flex: 1 1 180px; min-width: 0; box-sizing: border-box; }
+.id { flex: 1 1 180px; }
 .part { display: flex; align-items: center; gap: 6px; font-size: 12px; }
-.num { width: 60px; box-sizing: border-box; }
+.num { width: 60px; }
 .err { flex-basis: 100%; margin: 0; color: var(--vx-bad); font-size: 12px; }
 .foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .spacer { flex: 1; }

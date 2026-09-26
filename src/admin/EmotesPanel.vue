@@ -1,10 +1,10 @@
 <script setup lang="ts">
 // The emote sets saved with a VOD (what its chat replay shows): counts per set, a preview, and re-capture actions.
-import { VxButton, VxCallout, VxChip, VxDialog, VxSkeleton, VxTabs, useToast, type Option } from '@vexoulz/ui'
+import { timeAgo, VxButton, VxCallout, VxChip, VxDialog, VxSkeleton, VxTabs, useToast, type Option } from '@vexoulz/ui'
 import { emoteImage, type RawThirdPartyEmote } from '@vexoulz/vods-core'
 import { computed, ref, watch } from 'vue'
 import type { AdminEmotes } from './api'
-import { ago, stamp } from './format'
+import { stamp } from './format'
 import { admin } from './session'
 import { errorMessage } from '@/lib/errors'
 
@@ -88,8 +88,8 @@ async function run(name: string, action: () => Promise<{ msg: string; jobId?: nu
             {{ data.global_emotes_source }}
           </VxChip>
           <VxChip v-else tone="warn" k="globals">not saved</VxChip>
-          <span v-if="data.global_emotes_at" class="vx-muted small" :title="stamp(data.global_emotes_at)">globals from {{ ago(data.global_emotes_at) }}</span>
-          <span v-if="data.updatedAt" class="vx-muted small" :title="stamp(data.updatedAt)">· row updated {{ ago(data.updatedAt) }}</span>
+          <span v-if="data.global_emotes_at" class="vx-muted small" :title="stamp(data.global_emotes_at)">globals from {{ timeAgo(data.global_emotes_at) }}</span>
+          <span v-if="data.updatedAt" class="vx-muted small" :title="stamp(data.updatedAt)">· row updated {{ timeAgo(data.updatedAt) }}</span>
         </div>
         <p v-if="empty.length" class="vx-muted small">Empty: {{ empty.join(', ') }}. "Fill missing sets" tries them again.</p>
         <VxTabs v-model="shown" :options="tabs" label="Emote set" class="tabs" />
