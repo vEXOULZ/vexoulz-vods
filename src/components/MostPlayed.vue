@@ -1,26 +1,25 @@
 <script setup lang="ts">
-// Filter shortcuts under the latest VOD: the most played games as a hand of box-art cards (with how many VODs
-// each is in) and a few date ranges. Each sets that filter on the list below; the game picker still has every game.
+// The most played games under the latest VOD, as a hand of box-art cards with how many VODs each is in. A card sets
+// the game filter on the list below; the game picker still has every game.
 import { learnGameColors, VxButton, VxPlaceholder, VxSkeleton } from '@vexoulz/ui'
 import type { GamePlayed } from '@vexoulz/vods-core'
 import { computed, watchEffect } from 'vue'
 import { boxArt } from '@/lib/art'
-import { dateShortcuts, relativeDay, type DateShortcut } from '@/lib/dates'
+import { relativeDay } from '@/lib/dates'
 
 const props = withDefaults(defineProps<{ games: GamePlayed[] | null; error?: string | null; limit?: number }>(), { limit: 8 })
-const emit = defineEmits<{ game: [name: string]; dates: [range: DateShortcut]; retry: [] }>()
+const emit = defineEmits<{ game: [name: string]; retry: [] }>()
 
 const top = computed(() =>
   [...(props.games ?? [])].sort((a, b) => b.vods - a.vods || b.lastPlayed.getTime() - a.lastPlayed.getTime()).slice(0, props.limit),
 )
 const art = (g: GamePlayed) => boxArt(g.image, 208) ?? undefined
 watchEffect(() => learnGameColors(top.value.map((g) => ({ name: g.name, image: art(g) }))))
-const ranges = dateShortcuts()
 </script>
 
 <template>
-  <aside class="strip vx-panel" aria-label="Filter shortcuts">
-    <div class="group games-group">
+  <aside class="strip vx-panel" aria-label="Most played games">
+    <div class="group">
       <div class="vx-eyebrow">Most played</div>
       <div v-if="error" class="vx-muted small">
         Couldn't load the games. <VxButton size="sm" variant="ghost" @click="emit('retry')">Try again</VxButton>
@@ -37,20 +36,12 @@ const ranges = dateShortcuts()
         </li>
       </ul>
     </div>
-    <div class="group">
-      <div class="vx-eyebrow">Streamed</div>
-      <div class="dates">
-        <VxButton v-for="r in ranges" :key="r.label" size="sm" @click="emit('dates', r)">{{ r.label }}</VxButton>
-      </div>
-    </div>
   </aside>
 </template>
 
 <style scoped>
-.strip { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px 24px; padding: 12px 14px; }
-.group { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.games-group { flex: 1 1 32rem; container-type: inline-size; }
-.dates { display: flex; flex-wrap: wrap; gap: 6px; }
+.strip { padding: 12px 14px; }
+.group { display: flex; flex-direction: column; gap: 8px; min-width: 0; container-type: inline-size; }
 .small { font-size: 12px; }
 
 /* A hand of cards: overlapping, fanned out from the middle, and the one you point at rises to the top. */

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Past broadcasts: one filter bar (All resets, title search, game dropdown with every game in the archive, date
 // range; all combinable and kept in the URL), a grid of cards, and "load more". On phones the bar wraps.
-// Unfiltered, the newest VOD also gets its own panel on top, with shortcuts to the most played games and recent dates.
+// Unfiltered, the newest VOD also gets its own panel on top, with the most played games under it as filter shortcuts.
 import {
   VxAccountMenu,
   VxButton,
@@ -19,7 +19,7 @@ import { computed, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import GamePicker from '@/components/GamePicker.vue'
 import LatestVod from '@/components/LatestVod.vue'
-import ShortcutsTile from '@/components/ShortcutsTile.vue'
+import MostPlayed from '@/components/MostPlayed.vue'
 import VodCard from '@/components/VodCard.vue'
 import { loadGamesPlayed } from '@/lib/gamesPlayed'
 import { hasFilters, parseListQuery, toApiFilter, toListQuery, type ListState } from '@/lib/listQuery'
@@ -146,13 +146,7 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
 
     <section v-if="latest" class="top">
       <LatestVod :vod="latest" :progress="resumeAt.get(latest.id)" />
-      <ShortcutsTile
-        :games="games"
-        :error="gamesError"
-        @game="(g) => go({ game: g }, true)"
-        @dates="(r) => go({ from: r.from, to: r.to }, true)"
-        @retry="fetchGames(true)"
-      />
+      <MostPlayed :games="games" :error="gamesError" @game="(g) => go({ game: g }, true)" @retry="fetchGames(true)" />
     </section>
 
     <div class="bar">
