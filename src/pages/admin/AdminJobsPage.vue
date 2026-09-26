@@ -9,6 +9,8 @@ import JobsTable from '@/admin/JobsTable.vue'
 import StartJobDialog from '@/admin/StartJobDialog.vue'
 import { admin } from '@/admin/session'
 import { usePoll } from '@/admin/usePoll'
+import { errorMessage } from '@/lib/errors'
+import { watchDebounced } from '@/composables/watchDebounced'
 
 const PAGE = 50
 const route = useRoute()
@@ -43,11 +45,7 @@ const kindOptions = computed<Option<string>[]>(() => [
 const kindModel = computed({ get: () => kind.value, set: (v: string) => setQuery({ kind: v }) })
 
 const vodDraft = ref(vodId.value)
-let vodTimer: ReturnType<typeof setTimeout> | undefined
-watch(vodDraft, (v) => {
-  clearTimeout(vodTimer)
-  vodTimer = setTimeout(() => setQuery({ vodId: v.trim() }), 300)
-})
+watchDebounced(vodDraft, (v) => setQuery({ vodId: v.trim() }), 300)
 
 // Older pages, fetched on demand with the `before` cursor. The polled first page stays live on top.
 const older = ref<Job[]>([])
@@ -78,7 +76,7 @@ async function loadOlder() {
     older.value = [...older.value, ...page.data]
     if (page.data.length < PAGE) olderDone.value = true
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    error.value = errorMessage(e)
   } finally {
     loadingOlder.value = false
   }
@@ -143,7 +141,6 @@ onMounted(async () => {
 .tabs { max-width: 100%; overflow-x: auto; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; }
 .vod { flex: 0 1 200px; }
-.vod :deep(input) { width: 100%; }
 .sk { display: flex; flex-direction: column; gap: 6px; }
 .more { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 16px; }
 .small { font-size: 11px; }

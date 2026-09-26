@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hasFilters, parseListQuery, toApiFilter, toListQuery, watchPath } from '@/lib/listQuery'
+import { hasFilters, parseListQuery, toApiFilter, toListQuery } from '@/lib/listQuery'
 
 describe('parseListQuery', () => {
   it('defaults an empty query', () => {
@@ -57,18 +57,5 @@ describe('hasFilters', () => {
   it('ignores the page', () => {
     expect(hasFilters(parseListQuery({ page: '4' }))).toBe(false)
     expect(hasFilters(parseListQuery({ game: 'A' }))).toBe(true)
-  })
-})
-
-describe('watchPath', () => {
-  it('prefers VOD uploads, then live, then the auto route', () => {
-    expect(watchPath({ id: '1', uploads: [{ type: 'live' }, { type: 'vod' }] })).toBe('/vods/1')
-    expect(watchPath({ id: '2', uploads: [{ type: 'live' }] })).toBe('/live/2')
-    expect(watchPath({ id: '3', uploads: [] })).toBe('/youtube/3')
-  })
-
-  it('adds ?t= in whole seconds', () => {
-    expect(watchPath({ id: '1', uploads: [{ type: 'vod' }] }, 125.7)).toBe('/vods/1?t=125s')
-    expect(watchPath({ id: '1', uploads: [{ type: 'vod' }] }, 0)).toBe('/vods/1')
   })
 })

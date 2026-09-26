@@ -6,14 +6,13 @@ import {
   gamePalette,
   learnGameColors,
   useToast,
-  VxAccountMenu,
   VxButton,
   VxChip,
   VxKbd,
   VxMenuItem,
   VxPopover,
   VxPosters,
-  VxSiteShell,
+  clamp,
 } from '@vexoulz/ui'
 import {
   mountYouTube,
@@ -33,9 +32,9 @@ import WatchTimeline from '@/components/WatchTimeline.vue'
 import { useChatSettings } from '@/composables/useChatSettings'
 import { useFullscreen } from '@/composables/useFullscreen'
 import { useShortcuts, type Shortcut } from '@/composables/useShortcuts'
-import { cutNote } from '@/lib/cuts'
+import { cutNote, unplayable } from '@/lib/cuts'
 import { boxArt, gamesWithArt } from '@/lib/art'
-import { NAV } from '@/lib/nav'
+import VodsShell from '@/components/VodsShell.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -89,7 +88,7 @@ onUnmounted(() => {
 })
 
 function seek(t: number) {
-  const to = props.timeline.watchable(Math.min(Math.max(t, range.value.start), range.value.end))
+  const to = props.timeline.watchable(clamp(t, range.value.start, range.value.end))
   time.value = to
   wp?.seek(to)
 }
@@ -104,7 +103,6 @@ function togglePlay() {
 }
 
 // ---- parts ----
-const bad = (s: PartStatus | undefined) => s === 'missing' || s === 'blocked' || s === 'error'
 const statusText: Record<PartStatus, string> = {
   ok: '',
   processing: 'processing',
@@ -112,8 +110,8 @@ const statusText: Record<PartStatus, string> = {
   blocked: "can't embed",
   error: "won't play",
 }
-const curBad = computed(() => bad(status.value[partIndex.value]))
-const playable = (i: number) => !bad(status.value[i])
+const curBad = computed(() => unplayable(status.value[partIndex.value]))
+const playable = (i: number) => !unplayable(status.value[i])
 const prevOk = computed(() => {
   for (let i = partIndex.value - 1; i >= 0; i--) if (playable(i)) return i
   return -1
@@ -187,9 +185,8 @@ useShortcuts(() => shortcuts.value)
 </script>
 
 <template>
-  <VxSiteShell site="vods" :nav="NAV" fill sky="dim">
+  <VodsShell fill sky="dim">
     <template v-if="theater" #header><span class="no-header" hidden></span></template>
-    <template #account><VxAccountMenu disabled note="Sign-in comes later; progress is saved in this browser." /></template>
 
     <div class="watch" :class="{ nochat: !chat.open }" :style="{ '--chat-w': `${chat.width}%` }">
       <section class="stage">
@@ -296,7 +293,7 @@ useShortcuts(() => shortcuts.value)
                   >
                     <span class="vx-mono">{{ label(i) }}</span>
                     <template #trail>
-                      <VxChip v-if="bad(status[i])" tone="bad">{{ statusText[status[i]!] }}</VxChip>
+                      <VxChip v-if="unplayable(status[i])" tone="bad">{{ statusText[status[i]!] }}</VxChip>
                       <VxChip v-else-if="status[i] === 'processing'" tone="warn">processing</VxChip>
                     </template>
                   </VxMenuItem>
@@ -333,7 +330,7 @@ useShortcuts(() => shortcuts.value)
 
       <ChatPanel v-if="chat.open" :messages="replay.messages.value" :settings="chat" :error="chatError" :playing="playing" @hide="chat.open = false" />
     </div>
-  </VxSiteShell>
+  </VodsShell>
 </template>
 
 <style scoped>

@@ -3,14 +3,12 @@
 // range; all combinable and kept in the URL), a grid of cards, and "load more". On phones the bar wraps.
 // Unfiltered, the newest VOD also gets its own panel on top, with the most played games under it as filter shortcuts.
 import {
-  VxAccountMenu,
   VxButton,
   VxCallout,
   VxDateRange,
   VxEmptyState,
   VxInput,
   VxPopover,
-  VxSiteShell,
   VxSkeleton,
 } from '@vexoulz/ui'
 import { isResumable, type GamePlayed, type Progress, type Vod } from '@vexoulz/vods-core'
@@ -23,8 +21,9 @@ import MostPlayed from '@/components/MostPlayed.vue'
 import VodCard from '@/components/VodCard.vue'
 import { loadGamesPlayed } from '@/lib/gamesPlayed'
 import { hasFilters, parseListQuery, toApiFilter, toListQuery, type ListState } from '@/lib/listQuery'
-import { NAV } from '@/lib/nav'
 import { site, vodsConfig } from '@/vods.config'
+import VodsShell from '@/components/VodsShell.vue'
+import { watchDebounced } from '@/composables/watchDebounced'
 
 const { client, progress } = useVodsContext()
 const route = useRoute()
@@ -81,13 +80,13 @@ watch(
     if (t !== titleDraft.value.trim()) titleDraft.value = t
   },
 )
-let searchTimer: ReturnType<typeof setTimeout> | undefined
-watch(titleDraft, (t) => {
-  clearTimeout(searchTimer)
-  searchTimer = setTimeout(() => {
+const cancelSearch = watchDebounced(
+  titleDraft,
+  (t) => {
     if (t.trim() !== state.value.title) go({ title: t.trim() })
-  }, 350)
-})
+  },
+  350,
+)
 
 // ---- games: every game in the archive ----
 const games = shallowRef<GamePlayed[] | null>(null)
@@ -105,7 +104,7 @@ const game = computed({
 })
 
 function resetAll() {
-  clearTimeout(searchTimer)
+  cancelSearch()
   titleDraft.value = ''
   router.replace({ query: {} })
 }
@@ -141,8 +140,7 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
 </script>
 
 <template>
-  <VxSiteShell site="vods" :nav="NAV">
-    <template #account><VxAccountMenu disabled note="Sign-in comes later; progress is saved in this browser." /></template>
+  <VodsShell>
 
     <section v-if="latest" class="top">
       <LatestVod :vod="latest" :progress="resumeAt.get(latest.id)" />
@@ -197,7 +195,7 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
         <span class="vx-muted vx-mono small">{{ countText }}</span>
       </div>
     </template>
-  </VxSiteShell>
+  </VodsShell>
 </template>
 
 <style scoped>
@@ -205,7 +203,6 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
 .bar h1 { font-size: 28px; }
 .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .search { flex: 1 1 220px; max-width: 360px; }
-.search :deep(input) { width: 100%; }
 @container vx-site (max-width: 700px) {
   /* Search gets its own full-width line; All, game and dates share the next. */
   .search { order: -1; flex-basis: 100%; max-width: none; }

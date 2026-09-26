@@ -72,6 +72,5 @@ function pick(name: string, close: () => void) {
 .trigger { max-width: 260px; }
 .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .head { position: sticky; top: -6px; z-index: 1; padding: 2px 2px 6px; margin-bottom: 2px; background: var(--vx-bg); }
-.head :deep(.vx-input-wrap) { width: 100%; }
 .note { margin: 8px; font-size: 13px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 </style>

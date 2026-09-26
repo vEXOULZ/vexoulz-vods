@@ -16,6 +16,7 @@ import { admin } from '@/admin/session'
 import { usePoll } from '@/admin/usePoll'
 import VodActions from '@/admin/VodActions.vue'
 import YoutubeEditor from '@/admin/YoutubeEditor.vue'
+import { errorMessage } from '@/lib/errors'
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
@@ -33,7 +34,7 @@ async function load() {
   } catch (e) {
     const status = (e as { status?: number }).status
     if (status === 404) notFound.value = true
-    else loadError.value = e instanceof Error ? e.message : String(e)
+    else loadError.value = errorMessage(e)
   }
 }
 watch(() => props.id, load, { immediate: true })
@@ -60,7 +61,7 @@ async function saveTitle() {
     vod.value = await admin.updateVod(vod.value.id, { title: t })
     toast.show('Title saved', { duration: 3000 })
   } catch (e) {
-    toast.show(e instanceof Error ? e.message : String(e), { kind: 'error', duration: 5000 })
+    toast.show(errorMessage(e), { kind: 'error', duration: 5000 })
   } finally {
     titleSaving.value = false
   }
@@ -163,7 +164,6 @@ h2 { margin: 0 0 12px; }
 .title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px; }
 .title-row label { flex-basis: 100%; }
 .title-input { flex: 1 1 260px; }
-.title-input :deep(input) { width: 100%; }
 .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 16px; margin: 0; }
 dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.6; margin-bottom: 2px; }
 dd { margin: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }

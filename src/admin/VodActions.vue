@@ -5,6 +5,7 @@ import { VxButton, VxCheckbox, VxDialog, VxField, VxInput, VxSelect, useToast, t
 import { computed, ref } from 'vue'
 import { isSpliced, type ActionResult, type AdminVod } from './api'
 import { admin } from './session'
+import { errorMessage } from '@/lib/errors'
 
 const props = defineProps<{ vod: AdminVod }>()
 const emit = defineEmits<{ job: [jobId: number]; changed: []; deleted: [] }>()
@@ -25,7 +26,7 @@ async function run(name: string, action: () => Promise<ActionResult>, after?: ()
     if (res.jobId != null) emit('job', res.jobId)
     after?.()
   } catch (e) {
-    toast.show(e instanceof Error ? e.message : String(e), { kind: 'error', duration: 6000 })
+    toast.show(errorMessage(e), { kind: 'error', duration: 6000 })
   } finally {
     busy.value = null
   }
@@ -155,6 +156,5 @@ function remove() {
 .small { font-size: 12px; }
 .spliced { margin: 0; font-size: 13px; max-width: 72ch; }
 .form { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; color: var(--vx-text, inherit); }
-.form :deep(input) { width: 100%; box-sizing: border-box; }
 .range { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 </style>

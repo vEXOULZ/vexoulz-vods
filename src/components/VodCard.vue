@@ -3,11 +3,10 @@
 // link to that point), chapter strip, and where you stopped (from watch progress) with a bar showing how much
 // you've seen. Thumbnail and title link to the VOD; the posters sit outside those links.
 import { gamePalette, learnGameColors, VxChapterBar, VxChip, VxLink, VxMenuItem, VxPlaceholder, VxPopover, VxPosters } from '@vexoulz/ui'
-import { toClock, type Progress, type Vod } from '@vexoulz/vods-core'
-import { computed, ref, watchEffect } from 'vue'
+import { toClock, vodThumbnail, watchPath, type Progress, type Vod } from '@vexoulz/vods-core'
+import { computed, ref, watch, watchEffect } from 'vue'
 import { cutNote } from '@/lib/cuts'
-import { boxArt, gamesWithArt, thumbnailOf } from '@/lib/art'
-import { watchPath } from '@/lib/listQuery'
+import { boxArt, gamesWithArt } from '@/lib/art'
 
 const props = defineProps<{ vod: Vod; progress?: Progress | null }>()
 
@@ -22,12 +21,9 @@ const to = computed(() => watchPath(props.vod, props.progress?.t))
 const watched = computed(() => (props.progress && props.vod.duration ? Math.min(1, props.progress.t / props.vod.duration) : 0))
 const title = computed(() => props.vod.title || 'Untitled stream')
 
-const thumb = computed(() => thumbnailOf(props.vod))
+const thumb = computed(() => vodThumbnail(props.vod))
 const broken = ref(false)
-watchEffect(() => {
-  void thumb.value
-  broken.value = false
-})
+watch(thumb, () => (broken.value = false))
 </script>
 
 <template>

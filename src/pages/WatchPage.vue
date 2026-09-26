@@ -2,14 +2,14 @@
 // /vods/:id, /live/:id and /youtube/:id. `?t=` is VOD time (wins), `?part=` starts a part from its beginning;
 // with neither, playback resumes where this browser left off. A VOD merged into another one sends you to the same
 // moment in that one.
-import { useToast, VxAccountMenu, VxButton, VxCallout, VxEmptyState, VxSiteShell, VxSkeleton } from '@vexoulz/ui'
+import { useToast, VxButton, VxCallout, VxEmptyState, VxSkeleton } from '@vexoulz/ui'
 import { isResumable, parseTimestamp, toClock, toHMS, type Position, type UploadType } from '@vexoulz/vods-core'
 import { useVodsContext, useWatch } from '@vexoulz/vods-core/vue'
 import { computed, shallowRef, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import WatchView from '@/components/WatchView.vue'
-import { NAV } from '@/lib/nav'
 import { site } from '@/vods.config'
+import VodsShell from '@/components/VodsShell.vue'
 
 const props = defineProps<{ id: string; type: UploadType | null }>()
 const route = useRoute()
@@ -89,8 +89,7 @@ watchEffect(() => {
     :download="download"
     :share-url="shareUrl"
   />
-  <VxSiteShell v-else site="vods" :nav="NAV">
-    <template #account><VxAccountMenu disabled note="Sign-in comes later; progress is saved in this browser." /></template>
+  <VodsShell v-else>
     <VxCallout v-if="error" tone="error" title="Couldn't load this VOD">
       {{ error.message }}
       <template #actions><VxButton size="sm" @click="reload">Try again</VxButton></template>
@@ -114,7 +113,7 @@ watchEffect(() => {
       <VxSkeleton w="60%" />
       <VxSkeleton w="30%" h="0.8em" />
     </div>
-  </VxSiteShell>
+  </VodsShell>
 </template>
 
 <style scoped>

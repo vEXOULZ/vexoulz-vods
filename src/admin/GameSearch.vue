@@ -8,6 +8,7 @@ import { boxArt } from '@/lib/art'
 import type { TwitchGame } from './api'
 import type { GameValue } from './edits'
 import { admin } from './session'
+import { errorMessage } from '@/lib/errors'
 
 const props = defineProps<{ label?: string; invalid?: boolean }>()
 const model = defineModel<GameValue>({ required: true })
@@ -45,7 +46,7 @@ watch(query, (q) => {
       error.value = null
     } catch (e) {
       if (mine.signal.aborted) return
-      error.value = e instanceof Error ? e.message : String(e)
+      error.value = errorMessage(e)
       results.value = []
     } finally {
       if (ctrl === mine) loading.value = false
@@ -140,14 +141,14 @@ function onBlur(e: FocusEvent) {
 .is-invalid .current, .is-invalid .search { border-color: var(--vx-bad); }
 .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .art { width: 18px; height: 24px; border-radius: 2px; flex: none; object-fit: cover; }
-.ph { background: var(--vx-line, rgba(255, 255, 255, 0.12)); }
+.ph { background: var(--vx-line); }
 .search { flex: 1; min-width: 0; }
 .results {
   position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 30; min-width: 220px;
   list-style: none; margin: 0; padding: 4px; max-height: 280px; overflow: auto;
 }
 .results li { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 13px; }
-.results li.is-active { background: var(--vx-hover, rgba(255, 255, 255, 0.08)); }
+.results li.is-active { background: var(--vx-hover); }
 .results .note { cursor: default; font-size: 12px; }
 .bad { color: var(--vx-bad); }
 </style>

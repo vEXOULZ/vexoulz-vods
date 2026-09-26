@@ -1,6 +1,7 @@
 // The viewer's chat settings, remembered in this browser. Storage can be missing or throw (private mode, blocked
 // site data); the page then just starts from the defaults.
 import { reactive, watch } from 'vue'
+import { clamp } from '@vexoulz/ui'
 
 export interface ChatSettings {
   /** Seconds; positive shows chat later. */
@@ -47,7 +48,7 @@ function load(): ChatSettings {
     const saved = JSON.parse(raw) as Partial<ChatSettings>
     if (fromOld) delete saved.timestamps
     return {
-      delay: typeof saved.delay === 'number' && Number.isFinite(saved.delay) ? Math.max(-DELAY_LIMIT, Math.min(DELAY_LIMIT, saved.delay)) : base.delay,
+      delay: typeof saved.delay === 'number' && Number.isFinite(saved.delay) ? clamp(saved.delay, -DELAY_LIMIT, DELAY_LIMIT) : base.delay,
       timestamps: typeof saved.timestamps === 'boolean' ? saved.timestamps : base.timestamps,
       badges: typeof saved.badges === 'boolean' ? saved.badges : base.badges,
       colors: saved.colors === 'raw' ? 'raw' : 'readable',
@@ -55,7 +56,7 @@ function load(): ChatSettings {
       size: saved.size === 's' || saved.size === 'l' ? saved.size : 'm',
       width:
         typeof saved.width === 'number' && Number.isFinite(saved.width)
-          ? Math.max(WIDTH_MIN, Math.min(WIDTH_MAX, Math.round(saved.width)))
+          ? clamp(Math.round(saved.width), WIDTH_MIN, WIDTH_MAX)
           : base.width,
       open: typeof saved.open === 'boolean' ? saved.open : base.open,
     }

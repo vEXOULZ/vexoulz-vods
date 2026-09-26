@@ -1,9 +1,10 @@
 <script setup lang="ts">
 // One bar for the whole VOD (all parts): chapters in their game colour, restricted chapters hatched, parts that
 // can't play hatched red, part labels above. Click, drag or use the arrow keys to seek (VOD seconds).
-import { gamePalette } from '@vexoulz/ui'
+import { clamp } from '@vexoulz/ui'
 import { toClock, type PartStatus, type Span, type Timeline } from '@vexoulz/vods-core'
 import { computed, ref } from 'vue'
+import { unplayable } from '@/lib/cuts'
 
 const props = defineProps<{
   timeline: Timeline
@@ -15,19 +16,17 @@ const props = defineProps<{
   /** Label for part i (P1, or a game name on the games page). */
   partLabel?: (i: number) => string
   /** Colours per game (gamePalette of the VOD), shared with the posters. */
-  palette?: Map<string, string>
+  palette: Map<string, string>
 }>()
 const emit = defineEmits<{ seek: [t: number] }>()
 
 const len = computed(() => Math.max(1, props.range.end - props.range.start))
-const pct = (t: number) => `${(Math.min(Math.max(t - props.range.start, 0), len.value) / len.value) * 100}%`
+const pct = (t: number) => `${(clamp(t - props.range.start, 0, len.value) / len.value) * 100}%`
 const width = (a: number, b: number) => `${(Math.max(0, Math.min(b, props.range.end) - Math.max(a, props.range.start)) / len.value) * 100}%`
 
-const colors = computed(() => props.palette ?? gamePalette(props.timeline.chapters.map((c) => c.name)))
 const chapters = computed(() => props.timeline.chapters.filter((c) => c.end > props.range.start && c.start < props.range.end))
 const spans = computed(() => props.timeline.partSpans())
 const label = (i: number) => props.partLabel?.(i) ?? `P${i + 1}`
-const bad = (s: PartStatus | undefined) => s === 'missing' || s === 'blocked' || s === 'error'
 
 const track = ref<HTMLElement | null>(null)
 const hover = ref<{ x: number; t: number } | null>(null)
@@ -35,7 +34,7 @@ const dragging = ref(false)
 
 function timeAt(clientX: number): number {
   const r = track.value!.getBoundingClientRect()
-  const f = Math.min(Math.max((clientX - r.left) / r.width, 0), 1)
+  const f = clamp((clientX - r.left) / r.width, 0, 1)
   return props.range.start + f * len.value
 }
 function onDown(e: PointerEvent) {
@@ -60,7 +59,7 @@ function onKey(e: KeyboardEvent) {
   if (e.key in map) {
     e.preventDefault()
     e.stopPropagation()
-    emit('seek', props.timeline.watchable(Math.min(Math.max(props.time + map[e.key]!, props.range.start), props.range.end)))
+    emit('seek', props.timeline.watchable(clamp(props.time + map[e.key]!, props.range.start, props.range.end)))
   } else if (e.key === 'Home' || e.key === 'End') {
     e.preventDefault()
     emit('seek', props.timeline.watchable(e.key === 'Home' ? props.range.start : props.range.end - 1))
@@ -80,9 +79,9 @@ const shown = computed(() => (dragging.value && hover.value ? hover.value.t : pr
         type="button"
         tabindex="-1"
         class="plabel vx-mono"
-        :class="{ cur: i === partIndex, bad: bad(status[i]) }"
+        :class="{ cur: i === partIndex, bad: unplayable(status[i]) }"
         :style="{ left: pct(s.start) }"
-        :title="`${label(i)} · ${toClock(s.start)}–${toClock(s.end)}${bad(status[i]) ? ' · unavailable' : ''}`"
+        :title="`${label(i)} · ${toClock(s.start)}–${toClock(s.end)}${unplayable(status[i]) ? ' · unavailable' : ''}`"
         @click="emit('seek', s.start)"
       >{{ label(i) }}</button>
     </div>
@@ -107,10 +106,10 @@ const shown = computed(() => (dragging.value && hover.value ? hover.value.t : pr
         :key="i"
         class="seg"
         :class="{ cut: c.restricted, gap: c.kind === 'gap' }"
-        :style="{ left: pct(c.start), width: width(c.start, c.end), '--c': colors.get(c.name) }"
+        :style="{ left: pct(c.start), width: width(c.start, c.end), '--c': palette.get(c.name) }"
       ></span>
       <template v-for="(s, i) in spans" :key="'u' + i">
-        <span v-if="bad(status[i])" class="unseg" :style="{ left: pct(s.start), width: width(s.start, s.end) }"></span>
+        <span v-if="unplayable(status[i])" class="unseg" :style="{ left: pct(s.start), width: width(s.start, s.end) }"></span>
       </template>
       <span v-for="(s, i) in spans.slice(1)" :key="'t' + i" class="tick" :style="{ left: pct(s.start) }"></span>
       <span class="rest" :style="{ left: pct(shown) }"></span>

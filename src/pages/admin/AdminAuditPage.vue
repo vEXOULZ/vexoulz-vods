@@ -7,6 +7,7 @@ import AdminShell from '@/admin/AdminShell.vue'
 import { ago, stamp } from '@/admin/format'
 import { admin } from '@/admin/session'
 import { usePoll } from '@/admin/usePoll'
+import { errorMessage } from '@/lib/errors'
 
 const PAGE = 50
 const { data, error, loading, refresh } = usePoll((signal) => admin.audit({ limit: PAGE }, signal), 30_000)
@@ -29,7 +30,7 @@ async function loadOlder() {
     older.value = [...older.value, ...page.data]
     if (page.data.length < PAGE) olderDone.value = true
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    error.value = errorMessage(e)
   } finally {
     loadingOlder.value = false
   }

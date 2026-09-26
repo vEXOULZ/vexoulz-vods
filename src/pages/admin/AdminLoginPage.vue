@@ -67,5 +67,4 @@ async function submit() {
 <style scoped>
 .login { display: flex; flex-direction: column; gap: 14px; width: min(360px, 100%); margin: 8vh auto 0; padding: 24px; box-sizing: border-box; }
 .login h1 { font-size: 28px; margin: 0 0 4px; }
-.login :deep(input) { width: 100%; }
 </style>

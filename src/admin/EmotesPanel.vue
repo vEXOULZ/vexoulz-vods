@@ -6,6 +6,7 @@ import { computed, ref, watch } from 'vue'
 import type { AdminEmotes } from './api'
 import { ago, stamp } from './format'
 import { admin } from './session'
+import { errorMessage } from '@/lib/errors'
 
 const props = defineProps<{ vodId: string; /** Merged or split: the archive won't capture from Twitch for it. */ spliced?: boolean }>()
 const emit = defineEmits<{ job: [jobId: number] }>()
@@ -24,7 +25,7 @@ async function load() {
     data.value = await admin.vodEmotes(props.vodId)
     error.value = null
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    error.value = errorMessage(e)
   } finally {
     loading.value = false
   }
@@ -63,7 +64,7 @@ async function run(name: string, action: () => Promise<{ msg: string; jobId?: nu
     toast.show(res.msg, { duration: 3000 })
     if (res.jobId != null) emit('job', res.jobId)
   } catch (e) {
-    toast.show(e instanceof Error ? e.message : String(e), { kind: 'error', duration: 5000 })
+    toast.show(errorMessage(e), { kind: 'error', duration: 5000 })
   } finally {
     busy.value = null
   }
