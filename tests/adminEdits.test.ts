@@ -27,6 +27,11 @@ describe('chapter drafts', () => {
     ])
   })
 
+  it("keep a merge's gap chapter a gap chapter", () => {
+    const drafts = chapterDrafts([raw({}), raw({ name: 'Technical difficulties', gameId: null, start: 100, end: 60, restricted: true, kind: 'gap' })])
+    expect(chapterEdits(drafts).map((e) => e.kind)).toEqual([undefined, 'gap'])
+  })
+
   it('keep uncategorised chapters as null and derive templates from baked-in box art', () => {
     const [d] = chapterDrafts([raw({ name: null, gameId: null, image: 'https://static-cdn.jtvnw.net/ttv-boxart/1-40x53.jpg' })])
     expect(d).toMatchObject({ name: null, gameId: null, imageTemplate: 'https://static-cdn.jtvnw.net/ttv-boxart/1-{width}x{height}.jpg' })

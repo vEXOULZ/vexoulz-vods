@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Hand-edit a VOD's chapters: game (Twitch category search), start / end times, restricted (cut for DMCA). A strip on
 // top shows the result against the VOD's length. "Lock" keeps the automatic chapters step from overwriting the edit.
-import { gamePalette, VxButton, VxCallout, VxCheckbox, VxSwitch, useToast } from '@vexoulz/ui'
+import { gamePalette, VxButton, VxCallout, VxCheckbox, VxChip, VxSwitch, useToast } from '@vexoulz/ui'
 import { NO_CATEGORY, toClock } from '@vexoulz/vods-core'
 import { computed, ref, watch } from 'vue'
 import type { AdminVod } from './api'
@@ -55,7 +55,7 @@ function remove(r: ChapterDraft) {
 /** Split a chapter in the middle (e.g. to insert a game switch Twitch missed). */
 function split(r: ChapterDraft) {
   const mid = Math.round((r.start + r.end) / 2)
-  const copy = { ...newChapter([], 0), name: r.name, gameId: r.gameId, imageTemplate: r.imageTemplate, start: mid, end: r.end, restricted: r.restricted }
+  const copy = { ...newChapter([], 0), name: r.name, gameId: r.gameId, imageTemplate: r.imageTemplate, start: mid, end: r.end, restricted: r.restricted, kind: r.kind }
   r.end = mid
   rows.value.splice(rows.value.indexOf(r) + 1, 0, copy)
 }
@@ -105,7 +105,8 @@ async function save() {
           <TimeInput v-model="r.end" :label="`Chapter ${i + 1} end`" :invalid="errors.has(r.key)" />
           <span class="len vx-mono vx-muted" :title="'Length'">{{ Number.isFinite(r.end - r.start) && r.end > r.start ? toClock(r.end - r.start) : '—' }}</span>
         </div>
-        <VxCheckbox v-model="r.restricted" class="restricted">Cut (DMCA)</VxCheckbox>
+        <VxChip v-if="r.kind === 'gap'" class="restricted" title="The stream was down here, between two merged Twitch VODs. Undo the merge to remove it.">stream down</VxChip>
+        <VxCheckbox v-else v-model="r.restricted" class="restricted">Cut (DMCA)</VxCheckbox>
         <div class="row-actions">
           <VxButton variant="ghost" icon :label="`Split chapter ${i + 1} in two`" @click="split(r)">⋮</VxButton>
           <VxButton variant="ghost" icon :label="`Remove chapter ${i + 1}`" @click="remove(r)">×</VxButton>

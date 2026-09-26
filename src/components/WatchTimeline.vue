@@ -106,7 +106,7 @@ const shown = computed(() => (dragging.value && hover.value ? hover.value.t : pr
         v-for="(c, i) in chapters"
         :key="i"
         class="seg"
-        :class="{ cut: c.restricted }"
+        :class="{ cut: c.restricted, gap: c.kind === 'gap' }"
         :style="{ left: pct(c.start), width: width(c.start, c.end), '--c': colors.get(c.name) }"
       ></span>
       <template v-for="(s, i) in spans" :key="'u' + i">
@@ -117,7 +117,7 @@ const shown = computed(() => (dragging.value && hover.value ? hover.value.t : pr
       <span class="played" :style="{ width: pct(shown) }"></span>
       <span class="head" :style="{ left: pct(shown) }"></span>
       <span v-if="hover" class="tip vx-mono" :style="{ left: `${hover.x}px` }">
-        {{ toClock(hover.t) }}<template v-if="hoverCut"> · cut from YouTube</template><template v-else-if="hoverChapter"> · {{ hoverChapter.name }}</template>
+        {{ toClock(hover.t) }}<template v-if="hoverChapter?.kind === 'gap'"> · stream down</template><template v-else-if="hoverCut"> · cut from YouTube</template><template v-else-if="hoverChapter"> · {{ hoverChapter.name }}</template>
       </span>
     </div>
   </div>
@@ -138,6 +138,8 @@ const shown = computed(() => (dragging.value && hover.value ? hover.value.t : pr
 .track:hover, .track:focus-visible { height: 10px; margin-top: 1px; margin-bottom: 3px; }
 .seg { position: absolute; top: 0; bottom: 0; border-right: 2px solid rgb(0 0 0 / 0.85); background: var(--c); }
 .seg.cut { background: repeating-linear-gradient(-45deg, rgb(255 255 255 / 0.18) 0 3px, transparent 3px 6px); }
+/* A merge's gap: the stream was down, so nothing to hatch; a dotted line through the middle marks the join. */
+.seg.gap { background: radial-gradient(circle, rgb(255 255 255 / 0.35) 1px, transparent 1.5px) 0 50% / 5px 100% repeat-x; }
 .unseg { position: absolute; top: 0; bottom: 0; pointer-events: none; background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--vx-bad) 55%, transparent) 0 2px, rgb(0 0 0 / 0.65) 2px 6px); }
 .tick { position: absolute; top: -9px; bottom: -2px; width: 1px; background: var(--vx-muted); pointer-events: none; }
 /* Progress never paints over the chapter colours: what's still ahead is dimmed, and a thin accent line runs under

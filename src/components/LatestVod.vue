@@ -21,7 +21,7 @@ const date = computed(() =>
 )
 const time = computed(() => props.vod.createdAt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))
 const parts = computed(() => props.vod.uploads.filter((u) => u.type === 'vod').length || props.vod.uploads.length)
-const cut = computed(() => props.vod.chapters.filter((c) => c.restricted).length)
+const cut = computed(() => props.vod.chapters.filter((c) => c.restricted && c.kind !== 'gap').length)
 const watched = computed(() => (props.progress && props.vod.duration ? Math.min(1, props.progress.t / props.vod.duration) : 0))
 
 const thumb = computed(() => thumbnailOf(props.vod))

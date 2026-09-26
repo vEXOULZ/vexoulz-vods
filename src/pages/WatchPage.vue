@@ -1,17 +1,19 @@
 <script setup lang="ts">
 // /vods/:id, /live/:id and /youtube/:id. `?t=` is VOD time (wins), `?part=` starts a part from its beginning;
-// with neither, playback resumes where this browser left off.
+// with neither, playback resumes where this browser left off. A VOD merged into another one sends you to the same
+// moment in that one.
 import { useToast, VxAccountMenu, VxButton, VxCallout, VxEmptyState, VxSiteShell, VxSkeleton } from '@vexoulz/ui'
 import { isResumable, parseTimestamp, toClock, toHMS, type Position, type UploadType } from '@vexoulz/vods-core'
 import { useVodsContext, useWatch } from '@vexoulz/vods-core/vue'
 import { computed, shallowRef, watch, watchEffect } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import WatchView from '@/components/WatchView.vue'
 import { NAV } from '@/lib/nav'
 import { site } from '@/vods.config'
 
 const props = defineProps<{ id: string; type: UploadType | null }>()
 const route = useRoute()
+const router = useRouter()
 const toast = useToast()
 const { progress } = useVodsContext()
 const { vod, timeline, uploadType, download, loading, notFound, error, reload } = useWatch(
@@ -19,12 +21,33 @@ const { vod, timeline, uploadType, download, loading, notFound, error, reload } 
   () => props.type,
 )
 
+// Old links to the later half of a merged broadcast: same route type (both halves had the same kind of uploads),
+// same moment, and this browser's progress on the old id carries over.
+const merged = computed(() => vod.value?.mergedInto ?? null)
+watch(
+  merged,
+  async (m) => {
+    if (!m) return
+    const from = props.id
+    let t = parseTimestamp(typeof route.query.t === 'string' ? route.query.t : null)
+    if (!t) {
+      const saved = await progress.get(from).catch(() => null)
+      if (saved && isResumable(saved)) t = saved.t
+    }
+    if (props.id !== from) return
+    const base = route.path.split('/')[1] || 'vods'
+    const at = m.offset + (t ?? 0)
+    router.replace({ path: `/${base}/${encodeURIComponent(m.id)}`, query: at > 0 ? { t: `${Math.floor(at)}s` } : {}, hash: route.hash })
+  },
+  { immediate: true },
+)
+
 const start = shallowRef<Position | null>(null)
 watch(
   timeline,
   async (tl) => {
     start.value = null
-    if (!tl || tl.isEmpty) return
+    if (!tl || tl.isEmpty || merged.value) return
     const t = parseTimestamp(typeof route.query.t === 'string' ? route.query.t : null)
     const part = Number(route.query.part) || null
     if (!t && !part) {
@@ -58,7 +81,7 @@ watchEffect(() => {
 
 <template>
   <WatchView
-    v-if="vod && timeline && start"
+    v-if="vod && timeline && start && !merged"
     :key="`${vod.id}:${uploadType}`"
     :vod="vod"
     :timeline="timeline"
@@ -76,7 +99,7 @@ watchEffect(() => {
       <template #actions><VxButton to="/vods" variant="primary">Browse VODs</VxButton></template>
     </VxEmptyState>
     <VxEmptyState
-      v-else-if="vod && timeline?.isEmpty"
+      v-else-if="vod && timeline?.isEmpty && !merged"
       title="Not on YouTube yet"
       :text="`“${vod.title}” has no ${uploadType === 'live' ? 'live' : 'VOD'} uploads yet. Chat replay needs a video to follow.`"
     >

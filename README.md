@@ -49,7 +49,10 @@ a password session (HttpOnly cookie + CSRF token); the browser never holds an AP
 
 In `npm run dev`, `/backend-admin` is a built-in in-memory mock (`dev/adminMock.ts`, password `admin`; VODs come
 from the public archive API and edits stay in memory) unless
-`VITE_DEV_ADMIN_TARGET` is set in `.env.local`. The mock is never part of a build.
+`VITE_DEV_ADMIN_TARGET` is set in `.env.local`. The mock is never part of a build. To use the mock while
+`.env.local` names a worker, run `npm run dev -- --mode mock` with `VITE_DEV_ADMIN_TARGET=` (empty) in
+`.env.mock.local`. The mock also answers the public `/backend/vods/:id` for VODs it merged or split, so the watch
+page shows the result (gap chapters, old links sent to the merged VOD).
 
 ## Config
 
