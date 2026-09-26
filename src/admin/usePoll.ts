@@ -1,5 +1,6 @@
 // Load now, then again every `ms` while the tab is visible. Keeps the last good data when a refresh fails.
 import { onBeforeUnmount, onMounted, ref, shallowRef, type Ref } from 'vue'
+import { errorMessage } from '@/lib/errors'
 
 export function usePoll<T>(load: (signal: AbortSignal) => Promise<T>, ms: number) {
   const data = shallowRef<T | null>(null) as Ref<T | null>
@@ -19,7 +20,7 @@ export function usePoll<T>(load: (signal: AbortSignal) => Promise<T>, ms: number
       error.value = null
     } catch (e) {
       if (mine.signal.aborted) return
-      error.value = e instanceof Error ? e.message : String(e)
+      error.value = errorMessage(e)
     } finally {
       if (ctrl === mine) {
         loading.value = false

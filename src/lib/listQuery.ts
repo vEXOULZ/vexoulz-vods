@@ -51,5 +51,3 @@ export function toApiFilter(s: ListState): Omit<VodListOptions, 'page' | 'perPag
 
 export const hasFilters = (s: ListState) => !!(s.title || s.game || s.from || s.to)
 
-/** The watch page's path (shared with vexoulz.net's stream card). */
-export { watchPath } from '@vexoulz/vods-core'

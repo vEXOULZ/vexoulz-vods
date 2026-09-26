@@ -1,19 +1,20 @@
 <script setup lang="ts">
 // /admin/jobs/:id: one job's steps, controls and log. Polls the job every 3 s and appends new events.
 import { VxButton, VxCallout, VxCheckbox, VxChip, VxDialog, VxProgress, VxSkeleton, useToast } from '@vexoulz/ui'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, shallowRef, watch } from 'vue'
 import { AdminApiError, jobActions, type ActionResult, type JobEvent } from '@/admin/api'
 import AdminShell from '@/admin/AdminShell.vue'
 import { ago, stamp, stepStates, STATE_TONE } from '@/admin/format'
 import { admin } from '@/admin/session'
 import { usePoll } from '@/admin/usePoll'
+import { errorMessage } from '@/lib/errors'
 
 const props = defineProps<{ id: string }>()
 const jobId = computed(() => Number(props.id))
 const toast = useToast()
 
 // Events: kept across polls, fetched incrementally with the `after` cursor.
-const events = ref<JobEvent[]>([])
+const events = shallowRef<JobEvent[]>([])
 const eventsError = ref<string | null>(null)
 let after = 0
 const MAX_EVENTS = 1000
@@ -34,8 +35,7 @@ async function pollEvents(signal: AbortSignal) {
 }
 
 const { data: job, error, refresh } = usePoll(async (signal) => {
-  const j = await admin.job(jobId.value, signal)
-  await pollEvents(signal)
+  const [j] = await Promise.all([admin.job(jobId.value, signal), pollEvents(signal)])
   return j
 }, 3_000)
 
@@ -47,14 +47,15 @@ watch(jobId, () => {
 
 const actions = computed(() => (job.value ? jobActions(job.value) : null))
 const steps = computed(() => (job.value ? stepStates(job.value) : []))
-const progress = computed(() => [...events.value].reverse().find((e) => e.progress)?.progress ?? null)
+const latestProgress = computed(() => events.value.findLast((e) => e.progress) ?? null)
+const progress = computed(() => latestProgress.value?.progress ?? null)
 /** Log lines to show: progress reports only as the newest one of each unbroken run (uploads report every percent). */
 const logLines = computed(() =>
   events.value.filter((e, i, all) => !e.progress || !all[i + 1]?.progress || all[i + 1]!.step !== e.step),
 )
 const progressText = (p: { done: number; total: number; unit: string }) =>
   p.unit === 'percent' ? `${Math.round(p.done)}%` : p.unit === 'bytes' ? `${(p.done / 1e9).toFixed(2)} / ${(p.total / 1e9).toFixed(2)} GB` : `${p.done}/${p.total} ${p.unit}`
-const progressStep = computed(() => [...events.value].reverse().find((e) => e.progress)?.step ?? null)
+const progressStep = computed(() => latestProgress.value?.step ?? null)
 
 const busy = ref<string | null>(null)
 async function act(name: string, run: () => Promise<ActionResult | unknown>) {
@@ -65,7 +66,7 @@ async function act(name: string, run: () => Promise<ActionResult | unknown>) {
     toast.show(msg || 'Done', { duration: 3000 })
     await refresh()
   } catch (e) {
-    toast.show(e instanceof Error ? e.message : String(e), { kind: 'error', duration: 5000 })
+    toast.show(errorMessage(e), { kind: 'error', duration: 5000 })
   } finally {
     busy.value = null
   }

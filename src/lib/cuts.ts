@@ -1,6 +1,6 @@
 // Chapters that can't be watched: cut from the YouTube uploads (DMCA), or a merge's gap, where the stream was down
 // between two Twitch VODs of one broadcast.
-import type { Chapter } from '@vexoulz/vods-core'
+import type { Chapter, PartStatus } from '@vexoulz/vods-core'
 
 export const isGap = (c: Pick<Chapter, 'kind'>) => c.kind === 'gap'
 
@@ -10,3 +10,6 @@ export function cutNote(c: Pick<Chapter, 'kind' | 'restricted'>): { label: strin
   if (c.restricted) return { label: 'cut', title: 'Cut from the YouTube uploads' }
   return null
 }
+
+/** A part the player can't play: not on YouTube, not embeddable, or failing. */
+export const unplayable = (s: PartStatus | undefined) => s === 'missing' || s === 'blocked' || s === 'error'

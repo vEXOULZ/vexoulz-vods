@@ -1,14 +1,14 @@
 <script setup lang="ts">
 // /games/:id?part=N: a VOD's per-game uploads (one YouTube video per game). Each game plays on its own timeline that
 // keeps VOD time, so the bar, chapters and chat line up with the full VOD. `?part=` is the 1-based game (old URLs).
-import { VxAccountMenu, VxButton, VxCallout, VxChip, VxEmptyState, VxMenuItem, VxPopover, VxSiteShell, VxSkeleton } from '@vexoulz/ui'
+import { VxButton, VxCallout, VxChip, VxEmptyState, VxMenuItem, VxPopover, VxSkeleton, clamp } from '@vexoulz/ui'
 import { parseTimestamp, toClock, toHMS, type GameUpload } from '@vexoulz/vods-core'
 import { useVodsContext, useWatch } from '@vexoulz/vods-core/vue'
 import { computed, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import WatchView from '@/components/WatchView.vue'
 import { gameName, gameTimeline } from '@/lib/games'
-import { NAV } from '@/lib/nav'
+import VodsShell from '@/components/VodsShell.vue'
 
 const props = defineProps<{ id: string }>()
 const route = useRoute()
@@ -19,7 +19,7 @@ const { vod, loading, notFound, error, reload } = useWatch(() => props.id)
 const games = computed(() => vod.value?.games ?? [])
 const index = computed(() => {
   const n = Number(route.query.part) || 1
-  return Math.min(Math.max(n, 1), Math.max(games.value.length, 1)) - 1
+  return clamp(n, 1, Math.max(games.value.length, 1)) - 1
 })
 const game = computed<GameUpload | null>(() => games.value[index.value] ?? null)
 const timeline = computed(() => (vod.value && game.value ? gameTimeline(vod.value, game.value, { defaultPartDuration: config.defaultPartDuration }) : null))
@@ -77,8 +77,7 @@ watchEffect(() => {
       </VxPopover>
     </template>
   </WatchView>
-  <VxSiteShell v-else site="vods" :nav="NAV">
-    <template #account><VxAccountMenu disabled note="Sign-in comes later; progress is saved in this browser." /></template>
+  <VodsShell v-else>
     <VxCallout v-if="error" tone="error" title="Couldn't load this VOD">
       {{ error.message }}
       <template #actions><VxButton size="sm" @click="reload">Try again</VxButton></template>
@@ -93,7 +92,7 @@ watchEffect(() => {
       <VxSkeleton ratio="16 / 9" h="auto" />
       <VxSkeleton w="60%" />
     </div>
-  </VxSiteShell>
+  </VodsShell>
 </template>
 
 <style scoped>

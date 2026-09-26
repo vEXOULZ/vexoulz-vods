@@ -8,6 +8,7 @@ import { computed, ref, watch } from 'vue'
 import { AdminApiError, type AdminVod, type MergeCandidate, type MergeCandidates, type Splice, type SpliceResult, type SplitPoint } from './api'
 import { stamp } from './format'
 import { admin } from './session'
+import { errorMessage } from '@/lib/errors'
 
 const props = defineProps<{ vod: AdminVod }>()
 const emit = defineEmits<{ changed: []; job: [jobId: number] }>()
@@ -42,7 +43,7 @@ async function describe() {
     toast.show(`Updating the descriptions of ${touched.value.join(' and ')}`, { duration: 3500 })
     touched.value = []
   } catch (e) {
-    toast.show(e instanceof Error ? e.message : String(e), { kind: 'error', duration: 6000 })
+    toast.show(errorMessage(e), { kind: 'error', duration: 6000 })
   } finally {
     describing.value = false
   }
@@ -71,7 +72,7 @@ async function run(name: string, action: (force: boolean) => Promise<SpliceResul
       splitErr.value = { msg: e.message, points: e.validPoints }
       return
     }
-    toast.show(e instanceof Error ? e.message : String(e), { kind: 'error', duration: 8000 })
+    toast.show(errorMessage(e), { kind: 'error', duration: 8000 })
   } finally {
     busy.value = null
   }
@@ -91,7 +92,7 @@ async function loadCandidates() {
   try {
     cands.value = await admin.mergeCandidates(props.vod.id)
   } catch (e) {
-    candsError.value = e instanceof Error ? e.message : String(e)
+    candsError.value = errorMessage(e)
   }
 }
 watch(() => props.vod.id, () => ((cands.value = null), loadCandidates()), { immediate: true })
@@ -321,5 +322,4 @@ a { color: inherit; }
 .split { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .at { width: 120px; }
 .form { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
-.form :deep(input) { width: 100%; box-sizing: border-box; }
 </style>

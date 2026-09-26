@@ -7,7 +7,6 @@ import { VxBuild } from '@vexoulz/ui'
 import { createApp } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 
-import { ensure, session, setExpiredHandler } from './admin/session'
 import App from './App.vue'
 import { vodsConfig } from './vods.config'
 
@@ -37,14 +36,22 @@ const router = createRouter({
   scrollBehavior: (to, from, saved) => saved ?? (to.path !== from.path ? { top: 0 } : undefined),
 })
 
+// The admin session (and the admin client behind it) loads with the first admin page, not for every visitor.
+let sessionModule: Promise<typeof import('./admin/session')> | undefined
+const loadSession = () =>
+  (sessionModule ??= import('./admin/session').then((m) => {
+    m.setExpiredHandler(() => {
+      const here = router.currentRoute.value
+      if (here.path.startsWith('/admin') && !here.meta.public) router.push({ path: '/admin/login', query: { next: here.fullPath } })
+    })
+    return m
+  }))
+
 router.beforeEach(async (to) => {
   if (!to.path.startsWith('/admin') || to.meta.public) return true
+  const { ensure, session } = await loadSession()
   await ensure()
   return session.authenticated || { path: '/admin/login', query: { next: to.fullPath } }
-})
-setExpiredHandler(() => {
-  const here = router.currentRoute.value
-  if (here.path.startsWith('/admin') && !here.meta.public) router.push({ path: '/admin/login', query: { next: here.fullPath } })
 })
 
 createApp(App).use(router).use(VxBuild, { commit: __COMMIT__ }).use(createVods(vodsConfig)).mount('#app')

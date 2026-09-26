@@ -10,9 +10,6 @@ export function boxArt(url: string | null | undefined, width = 144): string | nu
   return url.replace(/-\d+x\d+(\.\w+)(\?.*)?$/, `-${size}$1$2`)
 }
 
-/** Thumbnail for a VOD card: shared with vexoulz.net's stream card, so both show the same one. */
-export { vodThumbnail as thumbnailOf } from '@vexoulz/vods-core'
-
 export interface GameArt {
   name: string
   image?: string

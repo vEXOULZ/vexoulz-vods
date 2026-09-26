@@ -3,11 +3,10 @@
 // uploaded in, and every chapter with its game, start and length (each a link to that point). Resumes where you
 // stopped, if you did.
 import { gamePalette, learnGameColors, VxButton, VxChapterBar, VxChip, VxLink, VxPlaceholder, VxPosters } from '@vexoulz/ui'
-import { toClock, type Progress, type Vod } from '@vexoulz/vods-core'
-import { computed, ref, watchEffect } from 'vue'
-import { boxArt, gamesWithArt, thumbnailOf } from '@/lib/art'
+import { toClock, vodThumbnail, watchPath, type Progress, type Vod } from '@vexoulz/vods-core'
+import { computed, ref, watch, watchEffect } from 'vue'
+import { boxArt, gamesWithArt } from '@/lib/art'
 import { relativeDay } from '@/lib/dates'
-import { watchPath } from '@/lib/listQuery'
 
 const props = defineProps<{ vod: Vod; progress?: Progress | null }>()
 
@@ -22,20 +21,18 @@ const date = computed(() =>
 const time = computed(() => props.vod.createdAt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))
 const parts = computed(() => props.vod.uploads.filter((u) => u.type === 'vod').length || props.vod.uploads.length)
 const cut = computed(() => props.vod.chapters.filter((c) => c.restricted && c.kind !== 'gap').length)
+const to = computed(() => watchPath(props.vod, props.progress?.t))
 const watched = computed(() => (props.progress && props.vod.duration ? Math.min(1, props.progress.t / props.vod.duration) : 0))
 
-const thumb = computed(() => thumbnailOf(props.vod))
+const thumb = computed(() => vodThumbnail(props.vod))
 const broken = ref(false)
-watchEffect(() => {
-  void thumb.value
-  broken.value = false
-})
+watch(thumb, () => (broken.value = false))
 </script>
 
 <template>
   <article class="latest vx-panel">
     <div class="main">
-      <VxLink :to="watchPath(vod, progress?.t)" class="thumb" :aria-label="title" tabindex="-1">
+      <VxLink :to="to" class="thumb" :aria-label="title" tabindex="-1">
         <div class="vx-ring img">
           <img v-if="thumb && !broken" :src="thumb" alt="" decoding="async" @error="broken = true" />
           <VxPlaceholder v-else label="no thumbnail" ratio="16 / 9" />
@@ -45,7 +42,7 @@ watchEffect(() => {
         <VxChapterBar v-if="vod.chapters.length" class="bar" :chapters="vod.chapters" :palette="palette" />
       </VxLink>
       <div class="vx-eyebrow">Latest broadcast · {{ relativeDay(vod.createdAt) }}</div>
-      <h2 class="title"><VxLink :to="watchPath(vod, progress?.t)">{{ title }}</VxLink></h2>
+      <h2 class="title"><VxLink :to="to">{{ title }}</VxLink></h2>
     </div>
 
     <div class="side">
@@ -75,7 +72,7 @@ watchEffect(() => {
           <VxChip v-if="vod.drive.length" tone="ok">download</VxChip>
         </div>
         <div class="actions">
-          <VxLink :to="watchPath(vod, progress?.t)" class="vx-btn is-primary">
+          <VxLink :to="to" class="vx-btn is-primary">
             {{ progress ? `▶ Resume at ${toClock(progress.t)}` : '▶ Watch' }}
           </VxLink>
           <VxLink v-if="progress" :to="watchPath(vod, 0)" class="vx-btn">From the start</VxLink>

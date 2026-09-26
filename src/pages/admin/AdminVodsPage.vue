@@ -7,6 +7,8 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AdminShell from '@/admin/AdminShell.vue'
 import { admin } from '@/admin/session'
+import { errorMessage } from '@/lib/errors'
+import { watchDebounced } from '@/composables/watchDebounced'
 
 const PER_PAGE = 30
 const route = useRoute()
@@ -16,11 +18,7 @@ const { client } = useVodsContext()
 
 const query = computed(() => (typeof route.query.q === 'string' ? route.query.q : ''))
 const draft = ref(query.value)
-let timer: ReturnType<typeof setTimeout> | undefined
-watch(draft, (v) => {
-  clearTimeout(timer)
-  timer = setTimeout(() => router.replace({ query: v.trim() ? { q: v.trim() } : {} }), 300)
-})
+watchDebounced(draft, (v) => router.replace({ query: v.trim() ? { q: v.trim() } : {} }), 300)
 
 const vods = ref<Vod[]>([])
 const total = ref(0)
@@ -37,13 +35,13 @@ async function load(reset: boolean) {
   try {
     const q = query.value
     // A bare id opens that VOD's row even if the title doesn't contain it.
-    const res = await client.listVods({ title: /^\d{6,}$/.test(q) ? undefined : q, page: page.value, perPage: PER_PAGE }, mine.signal)
+    const res = await client.listVods({ title: idLike.value ? undefined : q, page: page.value, perPage: PER_PAGE }, mine.signal)
     vods.value = reset ? res.vods : [...vods.value, ...res.vods]
     total.value = res.total
     error.value = null
   } catch (e) {
     if (mine.signal.aborted) return
-    error.value = e instanceof Error ? e.message : String(e)
+    error.value = errorMessage(e)
   } finally {
     if (ctrl === mine) loading.value = false
   }
@@ -88,7 +86,7 @@ async function add(mode: 'archive' | 'create') {
     addOpen.value = false
     router.push(`/admin/vods/${id}`)
   } catch (e) {
-    toast.show(e instanceof Error ? e.message : String(e), { kind: 'error', duration: 6000 })
+    toast.show(errorMessage(e), { kind: 'error', duration: 6000 })
   } finally {
     adding.value = null
   }
@@ -153,11 +151,9 @@ onMounted(() => (document.title = 'VODs · Admin · vods.vexoulz.net'))
 a { color: inherit; }
 .search { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .search > :first-child { flex: 1 1 260px; max-width: 480px; }
-.search :deep(input) { width: 100%; }
 .sk { display: flex; flex-direction: column; gap: 6px; }
 .title { margin-right: 6px; }
 .more { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 16px; }
 .small { font-size: 11px; }
 .form { margin-top: 12px; color: var(--vx-text, inherit); }
-.form :deep(input) { width: 100%; box-sizing: border-box; }
 </style>

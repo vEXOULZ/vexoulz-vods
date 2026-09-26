@@ -343,28 +343,28 @@ export class AdminClient {
   }
   /** Appends `source` (the later VOD) to `id`; `gap` (seconds) replaces the gap worked out from the start times. */
   merge(id: string, source: string, gap?: number): Promise<SpliceResult> {
-    return this.request('POST', `/admin/vods/${enc(id)}/merge`, { source, ...(gap != null ? { gap } : {}) })
+    return this.request('POST', `/admin/vods/${enc(id)}/merge`, { source, gap: gap ?? undefined })
   }
   unmerge(id: string, source: string, force = false): Promise<SpliceResult> {
-    return this.request('POST', `/admin/vods/${enc(id)}/unmerge`, { source, ...(force ? { force } : {}) })
+    return this.request('POST', `/admin/vods/${enc(id)}/unmerge`, { source, force: force || undefined })
   }
   /** From `at` (VOD seconds) on becomes a new VOD; at a merge's join, undoes that merge. */
   split(id: string, at: number, force = false): Promise<SpliceResult> {
-    return this.request('POST', `/admin/vods/${enc(id)}/split`, { at, ...(force ? { force } : {}) })
+    return this.request('POST', `/admin/vods/${enc(id)}/split`, { at, force: force || undefined })
   }
   /** Undoes the latest split of `id`, or the one that made `source`. */
   unsplit(id: string, source?: string, force = false): Promise<SpliceResult> {
-    return this.request('POST', `/admin/vods/${enc(id)}/unsplit`, { ...(source ? { source } : {}), ...(force ? { force } : {}) })
+    return this.request('POST', `/admin/vods/${enc(id)}/unsplit`, { source: source || undefined, force: force || undefined })
   }
 
   // ---- VOD jobs and fixes (the worker's existing routes) ----
   /** Chapters from Twitch; `force` also replaces chapters edited by hand. */
   refetchChapters(vodId: string, force = false): Promise<ActionResult> {
-    return this.request('POST', '/admin/chapters', { vodId, ...(force ? { force } : {}) })
+    return this.request('POST', '/admin/chapters', { vodId, force: force || undefined })
   }
   /** Fill the VOD's missing emote sets; `force` replaces the saved ones with today's. */
   captureEmotes(vodId: string, force = false): Promise<ActionResult> {
-    return this.request('POST', '/admin/emotes', { vodId, ...(force ? { force } : {}) })
+    return this.request('POST', '/admin/emotes', { vodId, force: force || undefined })
   }
   saveChat(vodId: string): Promise<ActionResult> {
     return this.request('POST', '/admin/logs', { vodId })

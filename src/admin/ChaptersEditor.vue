@@ -1,42 +1,40 @@
 <script setup lang="ts">
 // Hand-edit a VOD's chapters: game (Twitch category search), start / end times, restricted (cut for DMCA). A strip on
 // top shows the result against the VOD's length. "Lock" keeps the automatic chapters step from overwriting the edit.
-import { gamePalette, VxButton, VxCallout, VxCheckbox, VxChip, VxSwitch, useToast } from '@vexoulz/ui'
+import { gamePalette, VxButton, VxCallout, VxCheckbox, VxChip, VxSwitch, useToast, clamp } from '@vexoulz/ui'
 import { NO_CATEGORY, toClock } from '@vexoulz/vods-core'
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import type { AdminVod } from './api'
 import { chapterDrafts, chapterEdits, chapterErrors, chapterGaps, newChapter, type ChapterDraft, type GameValue } from './edits'
 import GameSearch from './GameSearch.vue'
 import { admin } from './session'
 import TimeInput from './TimeInput.vue'
+import { useDraftEditor } from './useDraftEditor'
 
 const props = defineProps<{ vod: AdminVod; duration: number }>()
 const emit = defineEmits<{ saved: [vod: AdminVod] }>()
 const toast = useToast()
 
-const rows = ref<ChapterDraft[]>([])
 const locked = ref(false)
-const snapshot = ref('')
-const state = () => JSON.stringify({ c: chapterEdits(rows.value), l: locked.value })
-
-function reset() {
-  rows.value = chapterDrafts(props.vod.chapters)
-  locked.value = props.vod.chaptersLocked
-  snapshot.value = state()
-  error.value = null
-}
-const error = ref<string | null>(null)
-watch(() => props.vod.id + JSON.stringify([props.vod.chapters, props.vod.chaptersLocked]), reset, { immediate: true })
-
-const dirty = computed(() => state() !== snapshot.value)
-const errors = computed(() => chapterErrors(rows.value, props.duration))
+const { rows, error, saving, dirty, errors, reset, save, remove } = useDraftEditor<ChapterDraft>({
+  source: () => [props.vod.id, props.vod.chapters, props.vod.chaptersLocked],
+  drafts: () => chapterDrafts(props.vod.chapters),
+  onReset: () => (locked.value = props.vod.chaptersLocked),
+  edits: (rows) => ({ c: chapterEdits(rows), l: locked.value }),
+  validate: (rows) => chapterErrors(rows, props.duration),
+  async save(rows) {
+    const vod = await admin.saveChapters(props.vod.id, chapterEdits(rows), locked.value)
+    toast.show(locked.value ? 'Chapters saved and locked' : 'Chapters saved', { duration: 3000 })
+    emit('saved', vod)
+  },
+})
 const gaps = computed(() => chapterGaps(rows.value, props.duration))
 const sorted = computed(() => rows.value.every((r, i) => i === 0 || rows.value[i - 1]!.start <= r.start))
 
 const label = (r: ChapterDraft) => r.name ?? NO_CATEGORY
 const palette = computed(() => gamePalette(rows.value.map(label)))
 const total = computed(() => Math.max(props.duration, ...rows.value.map((r) => (Number.isFinite(r.end) ? r.end : 0)), 1))
-const pct = (s: number) => `${(Math.max(0, Math.min(s, total.value)) / total.value) * 100}%`
+const pct = (s: number) => `${(clamp(s, 0, total.value) / total.value) * 100}%`
 
 function game(r: ChapterDraft): GameValue {
   return { name: r.name, gameId: r.gameId, imageTemplate: r.imageTemplate }
@@ -49,9 +47,6 @@ function setGame(r: ChapterDraft, g: GameValue) {
 function add() {
   rows.value.push(newChapter(rows.value, props.duration))
 }
-function remove(r: ChapterDraft) {
-  rows.value = rows.value.filter((x) => x !== r)
-}
 /** Split a chapter in the middle (e.g. to insert a game switch Twitch missed). */
 function split(r: ChapterDraft) {
   const mid = Math.round((r.start + r.end) / 2)
@@ -61,22 +56,6 @@ function split(r: ChapterDraft) {
 }
 function sortRows() {
   rows.value = [...rows.value].sort((a, b) => a.start - b.start)
-}
-
-const saving = ref(false)
-async function save() {
-  if (errors.value.size) return
-  saving.value = true
-  error.value = null
-  try {
-    const vod = await admin.saveChapters(props.vod.id, chapterEdits(rows.value), locked.value)
-    toast.show(locked.value ? 'Chapters saved and locked' : 'Chapters saved', { duration: 3000 })
-    emit('saved', vod)
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    saving.value = false
-  }
 }
 </script>
 
@@ -144,7 +123,7 @@ async function save() {
 .rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .row {
   display: grid; grid-template-columns: 22px minmax(160px, 1fr) auto auto auto; align-items: center; gap: 6px 10px;
-  padding: 6px 8px; border-radius: var(--vx-radius); background: var(--vx-panel, rgba(255, 255, 255, 0.03));
+  padding: 6px 8px; border-radius: var(--vx-radius); background: rgb(255 255 255 / 0.03);
 }
 .row.has-error { box-shadow: inset 0 0 0 1px var(--vx-bad); }
 .n { font-size: 12px; text-align: right; }

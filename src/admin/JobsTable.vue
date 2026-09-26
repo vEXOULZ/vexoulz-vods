@@ -46,5 +46,5 @@ const rows = computed(() => props.jobs.map((j) => ({ ...j, _pos: stepPosition(j)
 
 <style scoped>
 a { color: inherit; }
-.err { color: var(--vx-bad, #e5484d); font-size: 12px; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.err { color: var(--vx-bad); font-size: 12px; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>

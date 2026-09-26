@@ -14,7 +14,6 @@ export const vodsConfig = defineVodsConfig({
 
 export const site = {
   twitchUrl: 'https://twitch.tv/vexoulz',
-  repoUrl: 'https://github.com/vEXOULZ/vexoulz-vods',
   /** VOD cards per page. */
   perPage: 24,
 }

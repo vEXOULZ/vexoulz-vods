@@ -7,6 +7,7 @@ import JobsTable from '@/admin/JobsTable.vue'
 import { ago, STATE_TONE } from '@/admin/format'
 import { admin } from '@/admin/session'
 import { usePoll } from '@/admin/usePoll'
+import { errorMessage } from '@/lib/errors'
 
 const { data: health, error, loading, refresh } = usePoll((signal) => admin.health(signal), 15_000)
 const toast = useToast()
@@ -47,7 +48,7 @@ async function connectYoutube() {
     const { url } = await admin.youtubeAuthUrl()
     window.open(url, '_blank', 'noopener')
   } catch (e) {
-    toast.show(`Couldn't start the YouTube connection: ${e instanceof Error ? e.message : e}`, { kind: 'error', duration: 5000 })
+    toast.show(`Couldn't start the YouTube connection: ${errorMessage(e)}`, { kind: 'error', duration: 5000 })
   }
 }
 </script>

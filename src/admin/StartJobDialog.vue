@@ -4,6 +4,7 @@ import { VxButton, VxCallout, VxCheckbox, VxDialog, VxField, VxInput, VxSelect, 
 import { computed, ref, watch } from 'vue'
 import type { JobKind } from './api'
 import { admin } from './session'
+import { errorMessage } from '@/lib/errors'
 
 const props = defineProps<{ kinds: Record<string, JobKind>; vodId?: string }>()
 const emit = defineEmits<{ started: [jobId: number] }>()
@@ -69,7 +70,7 @@ async function submit() {
     if (res.jobId != null) emit('started', res.jobId)
     else open.value = false
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    error.value = errorMessage(e)
   } finally {
     busy.value = false
   }
@@ -115,7 +116,6 @@ async function submit() {
 <style scoped>
 .form { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; color: var(--vx-text, inherit); }
 .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
-.row :deep(input) { width: 100%; }
 .steps { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; }
 .steps legend { margin-bottom: 6px; padding: 0; }
 .payload { width: 100%; box-sizing: border-box; height: auto; resize: vertical; padding: 6px 8px; }
