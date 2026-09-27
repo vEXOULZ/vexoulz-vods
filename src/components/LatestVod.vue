@@ -3,8 +3,9 @@
 // uploaded in, and every chapter with its game, start and length (each a link to that point). Resumes where you
 // stopped, if you did.
 import { gamePalette, learnGameColors, VxButton, VxChapterBar, VxChip, VxLink, VxPlaceholder, VxPosters } from '@vexoulz/ui'
-import { boxArt, toClock, vodThumbnail, watchPath, type Progress, type Vod } from '@vexoulz/vods-core'
-import { computed, ref, watch, watchEffect } from 'vue'
+import { boxArt, toClock, watchPath, type Progress, type Vod } from '@vexoulz/vods-core'
+import { computed, watchEffect } from 'vue'
+import { useThumbnail } from '@/composables/useThumbnail'
 import { gamesWithArt } from '@/lib/art'
 import { relativeDay } from '@/lib/dates'
 
@@ -24,9 +25,7 @@ const cut = computed(() => props.vod.chapters.filter((c) => c.restricted && c.ki
 const to = computed(() => watchPath(props.vod, props.progress?.t))
 const watched = computed(() => (props.progress && props.vod.duration ? Math.min(1, props.progress.t / props.vod.duration) : 0))
 
-const thumb = computed(() => vodThumbnail(props.vod))
-const broken = ref(false)
-watch(thumb, () => (broken.value = false))
+const { src: thumb, srcset: thumbSet, onLoad: thumbLoaded, onError: thumbFailed } = useThumbnail(() => props.vod, 'always')
 </script>
 
 <template>
@@ -34,7 +33,7 @@ watch(thumb, () => (broken.value = false))
     <div class="main">
       <VxLink :to="to" class="thumb" :aria-label="title" tabindex="-1">
         <div class="vx-ring img">
-          <img v-if="thumb && !broken" :src="thumb" alt="" decoding="async" @error="broken = true" />
+          <img v-if="thumb" :src="thumb" :srcset="thumbSet" alt="" decoding="async" @load="thumbLoaded" @error="thumbFailed" />
           <VxPlaceholder v-else label="no thumbnail" ratio="16 / 9" />
         </div>
         <span class="dur vx-mono">{{ toClock(vod.duration) }}</span>
