@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // One bar for the whole VOD (all parts): chapters in their game colour, restricted chapters hatched, parts that
 // can't play hatched red, part labels above. Click, drag or use the arrow keys to seek (VOD seconds).
-import { clamp } from '@vexoulz/ui'
+import { clamp, clampX } from '@vexoulz/ui'
 import { toClock, type PartStatus, type Span, type Timeline } from '@vexoulz/vods-core'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { unplayable } from '@/lib/cuts'
@@ -97,6 +97,21 @@ function onKey(e: KeyboardEvent) {
     seekTo(props.timeline.watchable(e.key === 'Home' ? props.range.start : props.range.end - 1))
   }
 }
+// The time tip is centred on the pointer; near the ends of the bar it slides sideways to stay over the timeline
+// (not off screen, and not over the chat beside it).
+const root = ref<HTMLElement | null>(null)
+const tip = ref<HTMLElement | null>(null)
+const tipShift = ref(0)
+watch(
+  hover,
+  () => {
+    const box = tip.value?.getBoundingClientRect()
+    const area = root.value?.getBoundingClientRect()
+    tipShift.value =
+      box && area ? clampX(box.left - tipShift.value - area.left, box.right - tipShift.value - area.left, area.width, 4) : 0
+  },
+  { flush: 'post' },
+)
 const hoverChapter = computed(() => (hover.value ? props.timeline.chapterAt(hover.value.t) : null))
 const hoverCut = computed(() => (hover.value ? props.timeline.cutAt(hover.value.t) : null))
 const shown = computed(() => (dragging.value && hover.value ? hover.value.t : props.time))
@@ -109,7 +124,7 @@ const shownColor = computed(() => {
 </script>
 
 <template>
-  <div class="timeline">
+  <div ref="root" class="timeline">
     <div class="labels" aria-hidden="true">
       <button
         v-for="(s, i) in spans"
@@ -153,7 +168,12 @@ const shownColor = computed(() => {
       <span class="rest" :style="{ left: pct(shown) }"></span>
       <span class="played" :style="{ width: pct(shown) }"></span>
       <SnailMarker class="head" :mode="snailMode" :rate="rate" :shell="shownColor" :style="{ left: pct(shown) }" />
-      <span v-if="hover" class="tip vx-mono" :style="{ left: `${hover.x}px` }">
+      <span
+        v-if="hover"
+        ref="tip"
+        class="tip vx-mono"
+        :style="{ left: `${hover.x}px`, translate: tipShift ? `${tipShift}px 0` : undefined }"
+      >
         {{ toClock(hover.t) }}<template v-if="hoverChapter?.kind === 'gap'"> · stream down</template><template v-else-if="hoverCut"> · cut from YouTube</template><template v-else-if="hoverChapter"> · {{ hoverChapter.name }}</template>
       </span>
     </div>
