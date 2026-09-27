@@ -2,8 +2,9 @@
 // Chat replay beside (or under) the player. Follows the newest line unless you scroll up; then a button takes you
 // back down. Settings (delay, timestamps, badges, name colours, emote sources, size) are the viewer's own.
 import { twitchColor, VxButton, VxChip, VxPopover, VxSegmented, VxSlider, VxStepper, VxSwitch } from '@vexoulz/ui'
-import { toClock, type ChatMessage, type Token } from '@vexoulz/vods-core'
+import { toClock, type ChatMessage } from '@vexoulz/vods-core'
 import { nextTick, ref, watch } from 'vue'
+import ChatEmote from './ChatEmote.vue'
 import { DELAY_LIMIT, WIDTH_MAX, WIDTH_MIN, type ChatSettings } from '@/composables/useChatSettings'
 
 const props = defineProps<{ messages: ChatMessage[]; settings: ChatSettings; error?: string | null; playing: boolean }>()
@@ -31,7 +32,6 @@ watch(
   },
 )
 
-const showEmote = (t: Token) => t.kind === 'emote' && (t.emote.provider === 'twitch' || props.settings.emotes[t.emote.provider])
 const fmtDelay = (d: number) => `${d > 0 ? '+' : ''}${d.toFixed(1)}s`
 const colorOpts = [
   { value: 'readable' as const, label: 'readable' },
@@ -101,16 +101,7 @@ const sizeOpts = [
         </span>
         <span class="who" :style="{ color: twitchColor(m.user, m.color, settings.colors) }">{{ m.user }}</span>
         <template v-for="(t, j) in m.tokens" :key="j">
-          <img
-            v-if="t.kind === 'emote' && showEmote(t)"
-            class="emote"
-            :src="t.image.src"
-            :srcset="t.image.srcset"
-            :alt="t.emote.code"
-            :title="`${t.emote.code} · ${t.emote.provider}`"
-            loading="lazy"
-          />
-          <span v-else-if="t.kind === 'emote'">{{ t.emote.code }}</span>
+          <ChatEmote v-if="t.kind === 'emote'" :token="t" :enabled="settings.emotes" />
           <span v-else>{{ t.text }}</span>
         </template>
       </div>
@@ -143,6 +134,5 @@ const sizeOpts = [
 .badges img { width: 18px; height: 18px; }
 .who { font-weight: 700; }
 .who::after { content: ':'; color: var(--vx-muted); margin-right: 5px; }
-.emote { height: 28px; width: auto; vertical-align: middle; margin: -6px 0; }
 .jump { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); }
 </style>
