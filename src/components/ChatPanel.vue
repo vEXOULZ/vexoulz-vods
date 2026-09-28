@@ -2,9 +2,10 @@
 // Chat replay beside (or under) the player. Follows the newest line unless you scroll up; then a button takes you
 // back down. Settings (delay, timestamps, badges, name colours, emote sources, size) are the viewer's own.
 import { twitchColor, VxButton, VxChip, VxPopover, VxSegmented, VxSlider, VxStepper, VxSwitch } from '@vexoulz/ui'
-import { toClock, type ChatMessage } from '@vexoulz/vods-core'
-import { nextTick, ref, watch } from 'vue'
+import { toClock, type ChatMessage, type EmoteToken } from '@vexoulz/vods-core'
+import { nextTick, ref, shallowRef, watch } from 'vue'
 import ChatEmote from './ChatEmote.vue'
+import EmoteMenu from './EmoteMenu.vue'
 import { DELAY_LIMIT, WIDTH_MAX, WIDTH_MIN, type ChatSettings } from '@/composables/useChatSettings'
 
 const props = defineProps<{ messages: ChatMessage[]; settings: ChatSettings; error?: string | null; playing: boolean }>()
@@ -23,14 +24,18 @@ function toBottom() {
   following.value = true
   if (lines.value) lines.value.scrollTop = lines.value.scrollHeight
 }
-watch(
-  () => props.messages,
-  async () => {
-    if (!following.value) return
-    await nextTick()
-    if (lines.value) lines.value.scrollTop = lines.value.scrollHeight
-  },
-)
+// The emote menu, for one emote at a time: clicking the open one again closes it. Chat holds still while it's open
+// (new lines would scroll its emote away), and catches up once it closes.
+const menu = shallowRef<{ token: EmoteToken; anchor: HTMLElement } | null>(null)
+function toggleMenu(token: EmoteToken, anchor: HTMLElement) {
+  menu.value = menu.value?.anchor === anchor ? null : { token, anchor }
+}
+
+watch([() => props.messages, menu], async () => {
+  if (!following.value || menu.value) return
+  await nextTick()
+  if (lines.value) lines.value.scrollTop = lines.value.scrollHeight
+})
 
 const fmtDelay = (d: number) => `${d > 0 ? '+' : ''}${d.toFixed(1)}s`
 const colorOpts = [
@@ -101,11 +106,18 @@ const sizeOpts = [
         </span>
         <span class="who" :style="{ color: twitchColor(m.user, m.color, settings.colors) }">{{ m.user }}</span>
         <template v-for="(t, j) in m.tokens" :key="j">
-          <ChatEmote v-if="t.kind === 'emote'" :token="t" :enabled="settings.emotes" />
+          <ChatEmote
+            v-if="t.kind === 'emote'"
+            :token="t"
+            :enabled="settings.emotes"
+            :open="menu?.token === t"
+            @menu="toggleMenu(t, $event)"
+          />
           <span v-else>{{ t.text }}</span>
         </template>
       </div>
     </div>
+    <EmoteMenu v-if="menu" :token="menu.token" :anchor="menu.anchor" :enabled="settings.emotes" @close="menu = null" />
     <VxButton v-if="!following" class="jump" size="sm" variant="primary" @click="toBottom">↓ Latest messages</VxButton>
   </aside>
 </template>

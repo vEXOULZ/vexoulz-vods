@@ -1,10 +1,12 @@
 <script setup lang="ts">
 // One emote in chat: the emote, the zero-width emotes stacked over it, and the BTTV / FFZ modifiers applied to each.
-// Anything from a provider the viewer turned off shows as the text that was typed instead.
+// Anything from a provider the viewer turned off shows as the text that was typed instead. Clicking the stack (or
+// Enter / Space on it) asks for the menu linking each emote in it to its provider's page.
 import type { EmoteLayer, EmoteProvider, EmoteToken, Modifier } from '@vexoulz/vods-core'
 import { computed } from 'vue'
 
-const props = defineProps<{ token: EmoteToken; enabled: Record<'7tv' | 'bttv' | 'ffz', boolean> }>()
+const props = defineProps<{ token: EmoteToken; enabled: Record<'7tv' | 'bttv' | 'ffz', boolean>; open?: boolean }>()
+const emit = defineEmits<{ menu: [anchor: HTMLElement] }>()
 
 const on = (p: EmoteProvider) => p === 'twitch' || props.enabled[p]
 const codes = (mods: Modifier[]) => mods.map((m) => m.code)
@@ -62,7 +64,16 @@ const view = computed(() => {
 <template>
   <template v-if="view.before">{{ view.before }}</template>
   <template v-if="view.layers.length">
-    <span class="stack" :title="view.title">
+    <span
+      class="stack"
+      role="button"
+      tabindex="0"
+      aria-haspopup="menu"
+      :aria-expanded="open"
+      :title="open ? undefined : view.title"
+      @click="emit('menu', $event.currentTarget as HTMLElement)"
+      @keydown.enter.space.prevent="emit('menu', $event.currentTarget as HTMLElement)"
+    >
       <span
         v-for="(l, i) in view.layers"
         :key="i"
@@ -91,7 +102,8 @@ const view = computed(() => {
 
 <style scoped>
 /* Every layer sits in the same grid cell, centred: the stack is as big as its biggest layer. */
-.stack { display: inline-grid; vertical-align: middle; margin: -6px 0; }
+.stack { display: inline-grid; vertical-align: middle; margin: -6px 0; cursor: pointer; border-radius: 3px; }
+.stack[aria-expanded='true'] { outline: 1px solid var(--vx-accent); outline-offset: 1px; }
 .layer { grid-area: 1 / 1; place-self: center; position: relative; display: inline-flex; }
 .over { pointer-events: none; }
 .img { height: 28px; width: auto; display: block; }
