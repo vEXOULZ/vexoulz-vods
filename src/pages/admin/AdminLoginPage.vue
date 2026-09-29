@@ -3,7 +3,7 @@ import { VxButton, VxCallout, VxField, VxInput, VxSiteShell } from '@vexoulz/ui'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { AdminApiError } from '@/admin/api'
-import { ensure, login, session } from '@/admin/session'
+import { ensure, login, session, SIGNIN_ERRORS, twitchLoginUrl } from '@/admin/session'
 
 const route = useRoute()
 const router = useRouter()
@@ -18,11 +18,19 @@ const next = computed(() => {
   return typeof n === 'string' && n.startsWith('/admin') && !n.startsWith('//') ? n : '/admin'
 })
 
+/** A failed Twitch sign-in, as the worker's callback reports it. */
+const signinError = computed(() => {
+  const e = route.query.auth_error
+  if (typeof e !== 'string' || !e) return null
+  return SIGNIN_ERRORS[e] ?? `Signing in with Twitch failed (${e}).`
+})
+const offered = computed(() => session.passwordLogin || session.twitchLogin)
+
 onMounted(async () => {
   document.title = 'Admin · vods.vexoulz.net'
   await ensure()
   if (session.authenticated) router.replace(next.value)
-  else field.value?.focus()
+  else if (!session.twitchLogin) field.value?.focus()
 })
 
 async function submit() {
@@ -38,6 +46,8 @@ async function submit() {
     else if (e instanceof AdminApiError && e.status === 429)
       error.value = `Too many attempts. Try again in ${e.retryAfter ? `${Math.ceil(e.retryAfter / 60)} min` : 'a few minutes'}.`
     else if (e instanceof AdminApiError && e.status === 404) error.value = 'Password login is turned off on the archive.'
+    else if (e instanceof AdminApiError && e.status === 403)
+      error.value = "The admin password only works from the archive's local network. Sign in with Twitch instead."
     else error.value = `Couldn't reach the archive admin API${e instanceof Error ? ` (${e.message})` : ''}.`
   } finally {
     busy.value = false
@@ -50,16 +60,26 @@ async function submit() {
     <form class="login vx-panel" @submit.prevent="submit">
       <div class="vx-eyebrow">vods.vexoulz.net</div>
       <h1 class="vx-display">Admin</h1>
-      <VxCallout v-if="session.notice && !error" tone="warn">{{ session.notice }}</VxCallout>
-      <VxCallout v-if="session.checked && !session.passwordLogin" tone="warn" title="Password login is off">
-        The archive has no admin password configured.
+      <VxCallout v-if="signinError" tone="error">{{ signinError }}</VxCallout>
+      <VxCallout v-else-if="session.notice && !error" tone="warn">{{ session.notice }}</VxCallout>
+      <VxCallout v-if="session.checked && !offered" tone="warn" title="Sign-in is off">
+        Twitch sign-in isn't set up on the archive, and the admin password isn't offered here: either none is set
+        (<code>ARCHIVE_ADMIN_PASSWORD</code>), or this address is outside the networks it works from
+        (<code>ARCHIVE_ADMIN_PASSWORD_NETWORKS</code>, the local network by default).
       </VxCallout>
-      <VxField label="Password" :error="error ?? undefined">
-        <template #default="{ id }">
-          <VxInput :id="id" v-model="password" type="password" :invalid="!!error" ref="field" />
-        </template>
-      </VxField>
-      <VxButton type="submit" variant="primary" :loading="busy" :disabled="!password">Log in</VxButton>
+      <template v-if="session.twitchLogin">
+        <VxButton :href="twitchLoginUrl(next)" variant="primary" class="twitch">Sign in with Twitch</VxButton>
+        <p class="vx-muted note">For the archive's admins.</p>
+        <div v-if="session.passwordLogin" class="or vx-muted" role="separator">or with the admin password</div>
+      </template>
+      <template v-if="session.passwordLogin">
+        <VxField label="Password" :error="error ?? undefined">
+          <template #default="{ id }">
+            <VxInput :id="id" ref="field" v-model="password" type="password" :invalid="!!error" />
+          </template>
+        </VxField>
+        <VxButton type="submit" :variant="session.twitchLogin ? 'default' : 'primary'" :loading="busy" :disabled="!password">Log in</VxButton>
+      </template>
     </form>
   </VxSiteShell>
 </template>
@@ -67,4 +87,8 @@ async function submit() {
 <style scoped>
 .login { display: flex; flex-direction: column; gap: 14px; width: min(360px, 100%); margin: 8vh auto 0; padding: 24px; box-sizing: border-box; }
 .login h1 { font-size: 28px; margin: 0 0 4px; }
+.twitch { width: 100%; justify-content: center; }
+.note { margin: -6px 0 0; font-size: 12px; }
+.or { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.or::before, .or::after { content: ''; flex: 1; border-top: 1px solid var(--vx-line); }
 </style>

@@ -48,8 +48,23 @@ export interface Session {
   authenticated: boolean
   csrf: string | null
   expiresAt: string | null
-  /** False when the archive has no admin password configured. */
+  /**
+   * Whether the password is offered to this address: false when the archive has none configured, or when this
+   * address is outside ARCHIVE_ADMIN_PASSWORD_NETWORKS (the local network by default).
+   */
   passwordLogin: boolean
+  /** Whether "Sign in with Twitch" (through vexoulz-auth) is set up on the worker. Older workers omit it. */
+  twitchLogin?: boolean
+  /** The signed-in Twitch user; null for a password login. */
+  user?: AdminUser | null
+}
+
+export interface AdminUser {
+  id: string
+  login: string
+  displayName: string
+  avatar?: string | null
+  color?: string | null
 }
 
 export interface Health {

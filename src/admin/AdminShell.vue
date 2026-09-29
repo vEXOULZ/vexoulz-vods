@@ -1,9 +1,9 @@
 <script setup lang="ts">
-// Frame for every signed-in admin page: the site shell with the admin nav, and a log-out button.
+// Frame for every signed-in admin page: the site shell with the admin nav, who is signed in, and a log-out button.
 import { VxButton, VxSiteShell, type NavItem } from '@vexoulz/ui'
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { logout } from './session'
+import { logout, session } from './session'
 
 defineProps<{ title: string }>()
 const route = useRoute()
@@ -34,6 +34,7 @@ async function signOut() {
 <template>
   <VxSiteShell site="vods" :nav="nav" sky="dim">
     <template #account>
+      <span v-if="session.user" class="who vx-muted">{{ session.user.displayName }}</span>
       <VxButton variant="ghost" :loading="leaving" @click="signOut">Log out</VxButton>
     </template>
     <div class="head">
@@ -50,4 +51,5 @@ async function signOut() {
 .head .vx-eyebrow { flex-basis: 100%; }
 .head h1 { font-size: 28px; margin: 0; flex: 1 1 auto; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.who { font-size: 13px; align-self: center; }
 </style>
