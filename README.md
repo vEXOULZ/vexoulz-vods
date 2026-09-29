@@ -62,8 +62,8 @@ page shows the result (gap chapters, old links sent to the merged VOD).
 The header's account menu is the shared *.vexoulz.net sign-in (vexoulz-auth, through `@vexoulz/ui/account`;
 `src/lib/account.ts`). Signed in, watch progress is kept with the account (vods-core's `AccountProgressStore`), and
 what this browser saved before is merged into it; signed out, progress stays in the browser. `AUTH_BASE` in
-`src/lib/account.ts` (or `VITE_AUTH_BASE`) is vexoulz-auth's URL; empty, the default until it is live, turns sign-in
-off.
+`src/lib/account.ts` (or `VITE_AUTH_BASE`) is vexoulz-auth's URL, `https://auth.vexoulz.net`; empty turns
+sign-in off.
 
 ## Config
 
