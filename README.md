@@ -44,15 +44,26 @@ FFZ). The game dropdown comes from the archive's `/v1/games-played` and filters 
 Archive admin: status overview, the job queue (filter, start, pause/resume/retry/cancel, pause-before steps, live
 log), VOD editing (title, chapters with Twitch category search and a lock, YouTube and Drive lists, saved emotes,
 re-fetch / re-upload / delete actions, adding VODs the monitor missed) and the audit log. It talks to twitch-archive's worker admin API at `/backend-admin` on the site's origin (`VITE_ADMIN_API`), with
-a password session (HttpOnly cookie + CSRF token); the browser never holds an API key. The contract is in
+a session (HttpOnly cookie + CSRF token) from "Sign in with Twitch" (through vexoulz-auth, for the worker's
+`ARCHIVE_ADMIN_TWITCH_IDS`) or the admin password, which only works from the local network; the browser never holds an
+API key. The contract is in
 [docs/admin-api.md](docs/admin-api.md). Not linked from the public pages.
 
-In `npm run dev`, `/backend-admin` is a built-in in-memory mock (`dev/adminMock.ts`, password `admin`; VODs come
+In `npm run dev`, `/backend-admin` is a built-in in-memory mock (`dev/adminMock.ts`, password `admin`, and
+"Sign in with Twitch" signs a fake admin in at once; VODs come
 from the public archive API and edits stay in memory) unless
 `VITE_DEV_ADMIN_TARGET` is set in `.env.local`. The mock is never part of a build. To use the mock while
 `.env.local` names a worker, run `npm run dev -- --mode mock` with `VITE_DEV_ADMIN_TARGET=` (empty) in
 `.env.mock.local`. The mock also answers the public `/backend/vods/:id` for VODs it merged or split, so the watch
 page shows the result (gap chapters, old links sent to the merged VOD).
+
+## Signing in
+
+The header's account menu is the shared *.vexoulz.net sign-in (vexoulz-auth, through `@vexoulz/ui/account`;
+`src/lib/account.ts`). Signed in, watch progress is kept with the account (vods-core's `AccountProgressStore`), and
+what this browser saved before is merged into it; signed out, progress stays in the browser. `AUTH_BASE` in
+`src/lib/account.ts` (or `VITE_AUTH_BASE`) is vexoulz-auth's URL; empty, the default until it is live, turns sign-in
+off.
 
 ## Config
 

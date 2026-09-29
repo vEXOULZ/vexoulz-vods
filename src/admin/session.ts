@@ -1,7 +1,7 @@
 // The admin session: one client and one reactive session for the whole app. The router guard calls `ensure()`;
 // any 401 from the API drops the session so the next navigation lands on the login page.
 import { reactive, readonly } from 'vue'
-import { AdminApiError, AdminClient, type Session } from './api'
+import { AdminApiError, AdminClient, type AdminUser, type Session } from './api'
 
 export const adminBase: string = import.meta.env.VITE_ADMIN_API || '/backend-admin'
 export const admin = new AdminClient({ base: adminBase })
@@ -10,6 +10,8 @@ const state = reactive({
   checked: false,
   authenticated: false,
   passwordLogin: true,
+  twitchLogin: false,
+  user: null as AdminUser | null,
   expiresAt: null as string | null,
   /** Why the admin was sent to the login page (expired session). */
   notice: null as string | null,
@@ -20,8 +22,24 @@ function apply(s: Session) {
   state.checked = true
   state.authenticated = s.authenticated
   state.passwordLogin = s.passwordLogin
+  state.twitchLogin = s.twitchLogin ?? false
+  state.user = s.user ?? null
   state.expiresAt = s.expiresAt
   admin.csrf = s.csrf
+}
+
+/** Where "Sign in with Twitch" starts: the worker sends the browser through vexoulz-auth and back to `next`. */
+export function twitchLoginUrl(next: string): string {
+  return `${adminBase}/admin/signin?${new URLSearchParams({ next })}`
+}
+
+/** Why a Twitch sign-in came back to the login page (`?auth_error=` from the worker's callback). */
+export const SIGNIN_ERRORS: Record<string, string> = {
+  denied: 'The sign-in was cancelled on Twitch.',
+  expired: 'The sign-in took too long, or was finished in another browser. Try again.',
+  twitch: "Twitch didn't answer. Try again in a moment.",
+  not_allowed: "That Twitch account isn't one of the archive's admins (ARCHIVE_ADMIN_TWITCH_IDS).",
+  unavailable: "The sign-in service couldn't be reached. Try again in a moment.",
 }
 
 let onExpired: (() => void) | null = null
@@ -65,6 +83,7 @@ export async function logout(): Promise<void> {
     await admin.logout()
   } finally {
     state.authenticated = false
+    state.user = null
     state.expiresAt = null
     admin.csrf = null
   }

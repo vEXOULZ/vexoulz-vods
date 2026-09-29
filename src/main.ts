@@ -1,12 +1,14 @@
 import '@vexoulz/ui/fonts.css'
 import '@vexoulz/ui/style.css'
 
+import { AccountProgressStore } from '@vexoulz/vods-core'
 import { createVods } from '@vexoulz/vods-core/vue'
 import { VxBuild } from '@vexoulz/ui'
-import { createApp } from 'vue'
+import { createApp, watch } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 
 import App from './App.vue'
+import { account } from './lib/account'
 import { vodsConfig } from './vods.config'
 
 const WatchPage = () => import('./pages/WatchPage.vue')
@@ -53,4 +55,16 @@ router.beforeEach(async (to) => {
   return session.authenticated || { path: '/admin/login', query: { next: to.fullPath } }
 })
 
-createApp(App).use(router).use(VxBuild, { commit: __COMMIT__ }).use(createVods(vodsConfig)).mount('#app')
+// Watch progress follows the signed-in account (vexoulz-auth); signed out it stays in this browser, and signing in
+// moves what this browser has into the account.
+const progress = new AccountProgressStore({ signedIn: () => !!account.user.value, request: account.request })
+watch(account.user, (user, before) => {
+  if (user && !before) void progress.merge()
+})
+
+createApp(App)
+  .use(router)
+  .use(VxBuild, { commit: __COMMIT__ })
+  .use(account)
+  .use(createVods(vodsConfig, { progress }))
+  .mount('#app')

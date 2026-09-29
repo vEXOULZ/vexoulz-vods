@@ -20,7 +20,7 @@ The existing `Authorization: Bearer <admin api key>` keeps working for scripts. 
 | Request | Response |
 |---|---|
 | `GET /admin/session` (no auth) | `200 {"authenticated": bool, "csrf": string \| null, "expiresAt": string \| null, "passwordLogin": bool}` |
-| `POST /admin/session` `{"password": "..."}` | `200` same shape + `Set-Cookie`; `401` wrong password; `429` with `Retry-After` when rate-limited; `404` when no password is configured (`passwordLogin: false`) |
+| `POST /admin/session` `{"password": "..."}` | `200` same shape + `Set-Cookie`; `401` wrong password; `429` with `Retry-After` when rate-limited; `404` when no password is configured (`passwordLogin: false`); `403` from outside `ARCHIVE_ADMIN_PASSWORD_NETWORKS` |
 | `DELETE /admin/session` (needs CSRF) | `204`, cookie cleared |
 
 - Password from a new setting (e.g. `ARCHIVE_ADMIN_PASSWORD`), hashed with scrypt at startup and compared in constant
@@ -32,6 +32,17 @@ The existing `Authorization: Bearer <admin api key>` keeps working for scripts. 
 - Rate-limit failed logins (e.g. 5 per 5 minutes per client address). If the client address comes from a forwarded
   header, only trust it from a configured proxy address (setting, no default addresses in the repo).
 - `GET /admin/refreshtoken` stays as it is (Google's redirect target, proven by its signed `state`).
+
+### 1b. Twitch sign-in through vexoulz-auth (twitch-archive PR #22)
+
+- The password only works from `ARCHIVE_ADMIN_PASSWORD_NETWORKS` (the local networks by default); `passwordLogin` in
+  `GET /admin/session` says whether it is offered to the caller's address.
+- `GET /admin/session` also returns `twitchLogin: bool` (vexoulz-auth is configured) and `user` (the Twitch
+  `{id, login, displayName, avatar, color}`, null for a password session).
+- `GET /admin/signin?next=/admin/...` → vexoulz-auth → `GET /admin/signin/callback`, which sets the same `archive_admin`
+  cookie and redirects to `next`. Only `ARCHIVE_ADMIN_TWITCH_IDS` get a session. On failure it redirects to
+  `/admin/login?auth_error=<denied|expired|twitch|not_allowed|unavailable>&next=...`.
+- Audit entries from a Twitch session record the actor as `twitch:<id>`.
 
 ## 2. Health — new
 

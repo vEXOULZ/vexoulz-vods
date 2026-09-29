@@ -1,5 +1,6 @@
 // Dev-only stand-in for the worker admin API (docs/admin-api.md), so `npm run dev` can show /admin without a real
-// archive. Fake data, in memory; jobs advance on their own. Password: "admin". Never part of a build.
+// archive. Fake data, in memory; jobs advance on their own. Password: "admin"; "Sign in with Twitch" signs in a fake
+// Twitch admin at once (no vexoulz-auth). Never part of a build.
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { randomBytes } from 'node:crypto'
 import type { Plugin } from 'vite'
@@ -107,7 +108,9 @@ const json = (job: Job) => {
 const counts = () => Object.fromEntries(STATES.map((s) => [s, jobs.filter((j) => j.state === s).length]))
 
 // ---- sessions ----
-const sessions = new Map<string, { csrf: string; expires: number }>()
+type User = { id: string; login: string; displayName: string; avatar: null; color: string }
+const sessions = new Map<string, { csrf: string; expires: number; user: User | null }>()
+const TWITCH_ADMIN: User = { id: '42', login: 'vexoulz', displayName: 'vexoulz', avatar: null, color: '#9146FF' }
 const COOKIE = 'archive_admin'
 const failures: number[] = []
 
@@ -116,6 +119,17 @@ function sessionOf(req: IncomingMessage) {
   const s = m ? sessions.get(m[1]!) : undefined
   return s && s.expires > Date.now() ? { token: m![1]!, ...s } : null
 }
+
+function newSession(user: User | null) {
+  const token = randomBytes(24).toString('hex')
+  sessions.set(token, { csrf: randomBytes(16).toString('hex'), expires: Date.now() + 8 * 3600_000, user })
+  return token
+}
+const sessionCookie = (token: string) => `${COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800`
+const sessionJson = (s: ReturnType<typeof sessionOf>) => ({
+  authenticated: !!s, csrf: s?.csrf ?? null, expiresAt: s ? new Date(s.expires).toISOString() : null,
+  passwordLogin: true, twitchLogin: true, user: s?.user ?? null,
+})
 
 async function body(req: IncomingMessage): Promise<Record<string, unknown>> {
   let raw = ''
@@ -356,8 +370,7 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
         const s = sessionOf(req)
 
         if (path === '/admin/session') {
-          if (method === 'GET')
-            return send(res, 200, { authenticated: !!s, csrf: s?.csrf ?? null, expiresAt: s ? new Date(s.expires).toISOString() : null, passwordLogin: true })
+          if (method === 'GET') return send(res, 200, sessionJson(s))
           if (method === 'POST') {
             const now = Date.now()
             while (failures.length && failures[0]! < now - 300_000) failures.shift()
@@ -367,19 +380,22 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
               failures.push(now)
               return fail(res, 401, 'Wrong password')
             }
-            const token = randomBytes(24).toString('hex')
-            const csrf = randomBytes(16).toString('hex')
-            const expires = now + 8 * 3600_000
-            sessions.set(token, { csrf, expires })
-            return send(res, 200, { authenticated: true, csrf, expiresAt: new Date(expires).toISOString(), passwordLogin: true }, {
-              'set-cookie': `${COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800`,
-            })
+            const token = newSession(null)
+            return send(res, 200, sessionJson({ token, ...sessions.get(token)! }), { 'set-cookie': sessionCookie(token) })
           }
           if (method === 'DELETE') {
             if (s) sessions.delete(s.token)
             res.writeHead(204, { 'set-cookie': `${COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0` })
             return res.end()
           }
+        }
+
+        // The worker goes through vexoulz-auth here; the mock signs the fake Twitch admin in straight away.
+        if (path === '/admin/signin' && method === 'GET') {
+          const token = newSession(TWITCH_ADMIN)
+          const next = url.searchParams.get('next') ?? ''
+          res.writeHead(302, { location: next.startsWith('/admin') && !next.startsWith('//') ? next : '/admin', 'set-cookie': sessionCookie(token) })
+          return res.end()
         }
 
         // The worker answers 403 for both a missing and an expired session.
@@ -391,7 +407,7 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
             if (res.statusCode >= 400) return
             const am = /\/admin\/(vods|jobs)\/([^/]+)/.exec(path)
             const target = am ? `${am[1] === 'vods' ? 'vod' : 'job'}:${am[2]}` : b.vodId ? `vod:${b.vodId}` : null
-            audit.unshift({ id: ++auditId, at: iso(), actor: 'password', action: `${method} ${path.replace(/\/\d+/g, '/{id}')}`, target, detail: Object.keys(b).length ? b : null })
+            audit.unshift({ id: ++auditId, at: iso(), actor: s.user ? `twitch:${s.user.id}` : 'password', action: `${method} ${path.replace(/\/\d+/g, '/{id}')}`, target, detail: Object.keys(b).length ? b : null })
           })
         }
 
