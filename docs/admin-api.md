@@ -41,7 +41,7 @@ The existing `Authorization: Bearer <admin api key>` keeps working for scripts. 
   `{id, login, displayName, avatar, color}`, null for a password session).
 - `GET /admin/signin?next=/admin/...` → vexoulz-auth → `GET /admin/signin/callback`, which sets the same `archive_admin`
   cookie and redirects to `next`. Only `ARCHIVE_ADMIN_TWITCH_IDS` get a session. On failure it redirects to
-  `/admin/login?auth_error=<denied|expired|twitch|not_allowed|unavailable>&next=...`.
+  `/admin/login?auth_error=<denied|expired|twitch|not_allowed|unavailable|misconfigured>&next=...`.
 - Audit entries from a Twitch session record the actor as `twitch:<id>`.
 
 ## 2. Health — new

@@ -36,10 +36,12 @@ export function twitchLoginUrl(next: string): string {
 /** Why a Twitch sign-in came back to the login page (`?auth_error=` from the worker's callback). */
 export const SIGNIN_ERRORS: Record<string, string> = {
   denied: 'The sign-in was cancelled on Twitch.',
-  expired: 'The sign-in took too long, or was finished in another browser. Try again.',
+  expired: 'The sign-in expired or was already used (or finished in another browser). Try again.',
   twitch: "Twitch didn't answer. Try again in a moment.",
   not_allowed: "That Twitch account isn't one of the archive's admins (ARCHIVE_ADMIN_TWITCH_IDS).",
   unavailable: "The sign-in service couldn't be reached. Try again in a moment.",
+  misconfigured:
+    "The sign-in service turned down the archive itself: its client ID or secret (ARCHIVE_ADMIN_AUTH_CLIENT_*) doesn't match vexoulz-auth's. The password still works from the local network.",
 }
 
 let onExpired: (() => void) | null = null
