@@ -204,7 +204,7 @@ useShortcuts(() => shortcuts.value)
 <template>
   <VodsShell fill :header="!theater" sky="dim">
 
-    <div class="watch" :class="{ nochat: !chat.open }" :style="{ '--chat-w': `${chat.width}%` }">
+    <div class="watch" :class="{ nochat: !chat.open }" :style="{ '--chat-w': `${chat.width}px` }">
       <section class="stage">
         <div class="video">
           <div class="video-box">
@@ -361,9 +361,9 @@ useShortcuts(() => shortcuts.value)
 </template>
 
 <style scoped>
-/* Chat width is the viewer's share of the page (chat settings), but never under 240px or so wide the video
-   gets narrower than 320px. */
-.watch { display: grid; grid-template-columns: minmax(0, 1fr) clamp(240px, var(--chat-w, 26%), max(240px, calc(100% - 320px))); flex: 1; min-height: 0; }
+/* Chat width is the viewer's, in pixels (chat settings), so a bigger screen gives the video the room; never under
+   240px or so wide the video gets narrower than 320px. */
+.watch { display: grid; grid-template-columns: minmax(0, 1fr) clamp(240px, var(--chat-w, 340px), max(240px, calc(100% - 320px))); flex: 1; min-height: 0; }
 .watch.nochat { grid-template-columns: minmax(0, 1fr); }
 
 .stage { position: relative; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
