@@ -42,8 +42,10 @@ FFZ). The game dropdown comes from the archive's `/v1/games-played` and filters 
 
 ## Manage (`/manage`)
 The archive's admin pages: status overview, the job queue (filter, start, pause/resume/retry/cancel, pause-before steps, live
-log), VOD editing (title, chapters with Twitch category search and a lock, YouTube and Drive lists, saved emotes,
-re-fetch / re-upload / delete actions, adding VODs the monitor missed) and the audit log. It talks to twitch-archive's worker admin API at `/backend-admin` on the site's origin (`VITE_ADMIN_API`), with
+log), VODs (search including hidden and merged ones; per VOD: public or hidden, details (title, thumbnail, duration, date),
+chapters with Twitch category search and a lock, games rows, YouTube and Drive lists, saved emotes, re-fetch /
+re-upload / delete actions, merge and split; adding VODs the monitor missed), Storage (disk use and the worker's
+folders, deleting stale ones), Settings (the worker's runtime settings over its env defaults) and the audit log. It talks to twitch-archive's worker admin API at `/backend-admin` on the site's origin (`VITE_ADMIN_API`), with
 a session (HttpOnly cookie + CSRF token) from "Sign in with Twitch" (through vexoulz-auth, for the worker's
 `ARCHIVE_ADMIN_TWITCH_IDS`) or the admin password, which only works from the local network; the browser never holds an
 API key. The contract is in

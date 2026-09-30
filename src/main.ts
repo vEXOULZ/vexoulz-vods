@@ -33,6 +33,8 @@ const router = createRouter({
     { path: '/manage/jobs/:id(\\d+)', component: () => import('./pages/admin/AdminJobPage.vue'), props: true },
     { path: '/manage/vods', component: () => import('./pages/admin/AdminVodsPage.vue') },
     { path: '/manage/vods/:id', component: () => import('./pages/admin/AdminVodPage.vue'), props: true },
+    { path: '/manage/storage', component: () => import('./pages/admin/AdminStoragePage.vue') },
+    { path: '/manage/settings', component: () => import('./pages/admin/AdminSettingsPage.vue') },
     { path: '/manage/audit', component: () => import('./pages/admin/AdminAuditPage.vue') },
     // The old admin URLs, for bookmarks and the worker's sign-in errors (it sends those to /admin/login).
     { path: '/admin/:rest(.*)*', redirect: (to) => ({ path: `/manage${to.path.slice('/admin'.length)}`, query: to.query, hash: to.hash }) },

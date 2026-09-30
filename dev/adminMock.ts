@@ -169,6 +169,10 @@ function fakeBotChat(vodId: string): Json {
   }
 }
 const emoteRows = new Map<string, Json | null>()
+/** vods.hidden: the mock's public API answers 404 for these. */
+const hidden = new Set<string>()
+/** Games rows edited in the mock, by VOD id (the rest come from the public API). */
+const gameRows = new Map<string, Json[]>()
 const audit: Json[] = []
 let auditId = 0
 
@@ -192,6 +196,7 @@ async function vodOf(api: string, id: string): Promise<Json | null> {
 
 const adminVod = (v: Json) => ({
   ...v,
+  hidden: hidden.has(String(v.id)),
   chaptersLocked: locked.has(String(v.id)),
   botChat: botChats.get(String(v.id)) ?? null,
   jobs: jobs.filter((j) => j.vodId === v.id).slice(0, 20).map(json),
@@ -362,6 +367,94 @@ function undo(sp: SpliceRow, force: boolean) {
   return spliceJson(sp)
 }
 
+// ---- runtime settings (the worker's runtime_settings.ENTRIES) ----
+interface SettingSpec { key: string; type: string; group: string; applies: string; help: string; default: unknown; min?: number; max?: number }
+const SETTINGS: SettingSpec[] = [
+  { key: 'vod_download', type: 'bool', group: 'Capture', applies: 'now', help: "Archive every stream's Twitch VOD", default: true },
+  { key: 'chat_download', type: 'bool', group: 'Capture', applies: 'next job', help: 'Save the chat replay', default: true },
+  { key: 'live_record', type: 'bool', group: 'Capture', applies: 'now', help: 'Record the live stream itself', default: true },
+  { key: 'multi_track', type: 'bool', group: 'Capture', applies: 'now', help: 'Upload both the VOD copy and the live copy', default: false },
+  { key: 'monitor_interval_seconds', type: 'int', group: 'Capture', applies: 'now', help: 'How often Twitch is checked for a live stream', default: 60, min: 5, max: 3600 },
+  { key: 'youtube_upload', type: 'bool', group: 'YouTube', applies: 'next job', help: 'Upload to YouTube', default: true },
+  { key: 'youtube_public', type: 'bool', group: 'YouTube', applies: 'next job', help: 'Public instead of unlisted (for the main copy)', default: false },
+  { key: 'youtube_description', type: 'text', group: 'YouTube', applies: 'next job', help: 'Last line of every description', default: 'Archived by vods.vexoulz.net' },
+  { key: 'youtube_keepalive_hours', type: 'float', group: 'YouTube', applies: 'now', help: 'How often the YouTube token is refreshed (from the next refresh)', default: 72, min: 1, max: 720 },
+  { key: 'restricted_games', type: 'list', group: 'Pipeline', applies: 'next job', help: 'Chapters of these games are left out of uploads', default: ['Music'] },
+  { key: 'split_duration', type: 'int', group: 'Pipeline', applies: 'next job', help: 'Maximum YouTube part length in seconds', default: 43200, min: 600, max: 43200 },
+  { key: 'keep_hls', type: 'bool', group: 'Pipeline', applies: 'next job', help: 'Keep the HLS segments after upload', default: false },
+  { key: 'keep_mp4', type: 'bool', group: 'Pipeline', applies: 'next job', help: 'Keep the MP4 after upload', default: false },
+  { key: 'manual_steps', type: 'steps', group: 'Pipeline', applies: 'now', help: "Steps a job pauses before until resumed, per job kind (a job's own list wins)", default: {} },
+  { key: 'runner_concurrency', type: 'int', group: 'Runner', applies: 'now', help: 'Jobs run at once', default: 2, min: 1, max: 16 },
+  { key: 'max_attempts', type: 'int', group: 'Runner', applies: 'now', help: 'Tries of a failing step before its job fails', default: 3, min: 1, max: 10 },
+]
+const overrides = new Map<string, { value: unknown; updatedAt: string; updatedBy: string }>()
+const settingsJson = () =>
+  SETTINGS.map((e) => {
+    const o = overrides.get(e.key)
+    return {
+      key: e.key, value: o ? o.value : e.default, default: e.default, overridden: !!o, type: e.type, group: e.group, applies: e.applies,
+      help: e.help, min: e.min ?? null, max: e.max ?? null, updatedAt: o?.updatedAt ?? null, updatedBy: o?.updatedBy ?? null,
+      ...(e.type === 'steps' ? { choices: Object.fromEntries(Object.entries(KINDS).map(([k, v]) => [k, v.steps])) } : {}),
+    }
+  })
+function checkSetting(key: string, v: unknown): string | null {
+  const e = SETTINGS.find((x) => x.key === key)
+  if (!e) return `No setting ${key}`
+  const range = (n: number) => ((e.min != null && n < e.min) || (e.max != null && n > e.max) ? `${key} must be between ${e.min} and ${e.max}` : null)
+  switch (e.type) {
+    case 'bool': return typeof v === 'boolean' ? null : `${key} must be true or false`
+    case 'int': return typeof v === 'number' && Number.isInteger(v) ? range(v) : `${key} must be a whole number`
+    case 'float': return typeof v === 'number' && Number.isFinite(v) ? range(v) : `${key} must be a number`
+    case 'text': return typeof v === 'string' && v.length <= 500 ? null : `${key} must be text of at most 500 characters`
+    case 'list': return Array.isArray(v) && v.every((x) => typeof x === 'string' && x.trim()) ? null : `${key} must be a list of names`
+    case 'steps': {
+      if (!v || typeof v !== 'object' || Array.isArray(v)) return `${key} must map job kinds to lists of steps`
+      for (const [kind, steps] of Object.entries(v as Json)) {
+        if (!KINDS[kind]) return `Unknown job kind ${kind}`
+        if (!Array.isArray(steps)) return `${key}.${kind} must be a list of steps`
+        const bad = steps.find((x) => !KINDS[kind]!.steps.includes(x))
+        if (bad) return `${kind} has no step ${bad}`
+      }
+      return null
+    }
+  }
+  return null
+}
+
+// ---- storage: made-up folders under vods/ and live/ ----
+interface Folder { area: 'vods' | 'live'; name: string; bytes: number; files: number; ageH: number }
+const GB = 1024 ** 3
+const folders: Folder[] = [
+  { area: 'vods' as const, name: '2311111111', bytes: 18.4 * GB, files: 12, ageH: 3 },
+  { area: 'vods' as const, name: '2309876543', bytes: 42.1 * GB, files: 31, ageH: 72 },
+  { area: 'vods' as const, name: '9999999901', bytes: 7.2 * GB, files: 4, ageH: 400 },
+  { area: 'live' as const, name: '318204917655', bytes: 23.9 * GB, files: 1804, ageH: 1 },
+  { area: 'live' as const, name: '318100000001', bytes: 11.5 * GB, files: 902, ageH: 900 },
+  { area: 'vods' as const, name: '2300000002', bytes: 512 * 1024 ** 2, files: 2, ageH: 1500 },
+].map((f) => ({ ...f, bytes: Math.round(f.bytes) }))
+const activeJobsFor = (name: string) => jobs.filter((j) => j.vodId === name && ['queued', 'running', 'paused'].includes(j.state))
+function storageJson() {
+  const used = folders.reduce((t, f) => t + f.bytes, 0) + 120 * GB
+  const job = (j: Job) => ({ id: j.id, kind: j.kind, state: j.state, step: j.step, updatedAt: j.updatedAt })
+  return {
+    disk: { total: 500 * GB, used, free: 500 * GB - used },
+    folders: folders.map((f) => {
+      const known = vods.get(f.name)
+      // Folders named 23… stand for VODs the archive has; the others are left over.
+      const vod = f.area === 'vods' ? (known ? { id: String(known.id), title: known.title ?? null } : f.name.startsWith('23') ? { id: f.name, title: `Stream ${f.name}` } : null) : null
+      const active = activeJobsFor(f.name)
+      const last = jobs.filter((j) => j.vodId === f.name).sort((a, c) => c.id - a.id)[0] ?? null
+      return {
+        area: f.area, name: f.name, path: `${f.area}/${f.name}`, bytes: f.bytes, files: f.files, modifiedAt: iso(f.ageH * 3600_000),
+        vod: vod ? { ...vod, hidden: hidden.has(f.name) } : null,
+        jobs: { active: active.map(job), last: last ? job(last) : null },
+        stale: !active.length && (!vod || !!(last && ['failed', 'cancelled'].includes(last.state))),
+      }
+    }),
+    cacheSeconds: 30,
+  }
+}
+
 export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vexoulz.net/backend'): Plugin {
   return {
     name: 'vods-admin-mock',
@@ -374,9 +467,10 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
       server.middlewares.use('/backend', (req, res, next) => {
         const pm = /^\/vods\/([^/?]+)(?:\?.*)?$/.exec(req.url ?? '')
         const id = pm ? decodeURIComponent(pm[1]!) : ''
+        if (pm && hidden.has(id)) return send(res, 404, { name: 'NotFound', message: 'No record found', code: 404 })
         if (!pm || !spliced.has(id)) return next()
         if (deleted.has(id)) return send(res, 404, { name: 'NotFound', message: 'No record found', code: 404 })
-        const { chaptersLocked: _c, botChat: _b, jobs: _j, splices: _s, ...pub } = adminVod(vods.get(id)!)
+        const { chaptersLocked: _c, botChat: _b, jobs: _j, splices: _s, hidden: _h, ...pub } = adminVod(vods.get(id)!)
         return send(res, 200, pub)
       })
       server.middlewares.use(base, async (req, res) => {
@@ -447,6 +541,73 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
           })
         if (path === '/admin/youtube/auth') return send(res, 200, { url: 'https://accounts.google.com/' })
         if (path === '/admin/kinds') return send(res, 200, KINDS)
+
+        // ---- VOD list (every VOD, hidden and merged ones too) ----
+        if (path === '/admin/vods' && method === 'GET') {
+          const q = (url.searchParams.get('q') ?? '').trim()
+          const limit = Math.min(Number(url.searchParams.get('limit')) || 30, 100)
+          const want = url.searchParams.get('hidden')
+          const before = url.searchParams.get('before')
+          const beforeAt = before ? (await vodOf(publicApi, before))?.createdAt : null
+          const params = [`$limit=${limit + 1}`, '$sort[createdAt]=-1']
+          if (beforeAt) params.push(`createdAt[$lt]=${encodeURIComponent(beforeAt)}`)
+          let found: Json[]
+          if (/^\d+$/.test(q)) {
+            const one = await vodOf(publicApi, q)
+            found = one ? [one] : []
+          } else {
+            if (q) params.push(`title=${encodeURIComponent(q)}`)
+            found = ((await publicJson(publicApi, `/vods?${params.join('&')}`)) as { data: Json[] }).data
+          }
+          // Hidden VODs are gone from the public API: the mock adds back the ones it hid (on the first page).
+          const extra = before ? [] : [...hidden].map((h) => vods.get(h)).filter((v): v is Json => !!v && !found.some((f) => String(f.id) === String(v.id)))
+          const rows = [...found.map((v) => vods.get(String(v.id)) ?? v), ...extra]
+            .filter((v) => !deleted.has(String(v.id)))
+            .filter((v) => (want === 'true' ? hidden.has(String(v.id)) : want === 'false' ? !hidden.has(String(v.id)) : true))
+            .filter((v) => !q || /^\d+$/.test(q) || String(v.title ?? '').toLowerCase().includes(q.toLowerCase()))
+            .sort((a, c) => Date.parse(c.createdAt) - Date.parse(a.createdAt))
+          const page = rows.slice(0, limit)
+          return send(res, 200, {
+            data: page.map((v) => ({
+              id: String(v.id), title: v.title ?? null, createdAt: v.createdAt, duration: v.duration, duration_seconds: durOf(v),
+              thumbnail_url: v.thumbnail_url ?? null, stream_id: v.stream_id ?? null, hidden: hidden.has(String(v.id)), merged_into: v.merged_into?.id ?? null,
+            })),
+            next: found.length > limit && page.length ? String(page[page.length - 1]!.id) : null,
+          })
+        }
+
+        // ---- runtime settings ----
+        if (path === '/admin/settings' && method === 'GET') return send(res, 200, { data: settingsJson() })
+        if (path === '/admin/settings' && method === 'PATCH') {
+          if (!Object.keys(b).length) return fail(res, 400, 'Send at least one setting')
+          for (const [k, v] of Object.entries(b)) {
+            const problem = checkSetting(k, v)
+            if (problem) return fail(res, 400, problem)
+          }
+          for (const [k, v] of Object.entries(b)) overrides.set(k, { value: v, updatedAt: iso(), updatedBy: s.user ? `twitch:${s.user.id}` : 'password' })
+          return send(res, 200, { data: settingsJson() })
+        }
+        const setm = /^\/admin\/settings\/([\w-]+)$/.exec(path)
+        if (setm && method === 'DELETE') {
+          if (!SETTINGS.some((x) => x.key === setm[1])) return fail(res, 404, `No setting ${setm[1]}`)
+          overrides.delete(setm[1]!)
+          return send(res, 200, { data: settingsJson() })
+        }
+
+        // ---- storage ----
+        if (path === '/admin/storage' && method === 'GET') return send(res, 200, storageJson())
+        const stm = /^\/admin\/storage\/([^/]+)\/([^/]+)$/.exec(path)
+        if (stm && method === 'DELETE') {
+          const area = decodeURIComponent(stm[1]!)
+          const name = decodeURIComponent(stm[2]!)
+          if (!/^[\w-]+$/.test(name)) return fail(res, 400, 'Bad folder name')
+          const f = folders.find((x) => x.area === area && x.name === name)
+          if (!f) return fail(res, 404, `No folder ${area}/${name}`)
+          const active = activeJobsFor(f.name)
+          if (active.length) return fail(res, 409, `Job ${active[0]!.id} (${active[0]!.kind}) is ${active[0]!.state} for ${area}/${name}`)
+          folders.splice(folders.indexOf(f), 1)
+          return send(res, 200, { path: `${area}/${name}`, bytes: f.bytes, files: f.files })
+        }
 
         if (path === '/admin/jobs' && method === 'GET') {
           const state = url.searchParams.get('state')
@@ -568,8 +729,62 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
               return send(res, 200, { error: false, msg: `Joined ${sp.otherId} back into ${id}`, splice: out, vod: adminVod(vods.get(id)!) })
             }
             if (!part && method === 'PATCH') {
-              if (typeof b.title !== 'string' || !b.title.trim()) return fail(res, 400, 'title must be a non-empty string')
-              vod.title = b.title.trim()
+              const FIELDS = ['title', 'hidden', 'thumbnailUrl', 'duration', 'createdAt']
+              const unknown = Object.keys(b).filter((k) => !FIELDS.includes(k))
+              if (!Object.keys(b).length) return fail(res, 400, `Send at least one of ${FIELDS.join(', ')}`)
+              if (unknown.length) return fail(res, 400, `unknown field(s) ${unknown.join(', ')}; these can be changed: ${FIELDS.join(', ')}`)
+              if (vod.merged_into && Object.keys(b).some((k) => k !== 'hidden')) return fail(res, 409, `vod ${id} is merged into ${vod.merged_into.id}; only hidden can change`)
+              if ('title' in b && (typeof b.title !== 'string' || !b.title.trim())) return fail(res, 400, 'title must be a non-empty string')
+              if ('hidden' in b && typeof b.hidden !== 'boolean') return fail(res, 400, 'hidden must be true or false')
+              if ('thumbnailUrl' in b && b.thumbnailUrl && !/^https?:\/\/\S+$/.test(String(b.thumbnailUrl))) return fail(res, 400, 'thumbnailUrl must be an http(s) URL or null')
+              if ('duration' in b && !/^\d+:[0-5]\d:[0-5]\d$/.test(String(b.duration))) return fail(res, 400, 'duration must be HH:MM:SS')
+              if ('createdAt' in b && (!/(Z|[+-]\d\d:?\d\d)$/.test(String(b.createdAt)) || Number.isNaN(Date.parse(String(b.createdAt)))))
+                return fail(res, 400, 'createdAt must be an ISO date and time with an offset, e.g. 2026-09-30T18:00:00Z')
+              if ('duration' in b) {
+                const d = secondsOf(b.duration)
+                const lastChapter = Math.max(0, ...((vod.chapters as Json[]) ?? []).map((c) => Number(c.start) + chapterLen(c)))
+                const lastGame = Math.max(0, ...(gameRows.get(id) ?? []).map((g) => Number(g.end_time)))
+                const last = Math.max(lastChapter, lastGame)
+                if (last > d + 1) return fail(res, 400, `duration ${b.duration} is shorter than the chapters or games (they run to ${hms(last)})`)
+                setDur(vod, d)
+              }
+              if ('title' in b) vod.title = b.title.trim()
+              if ('hidden' in b) {
+                if (b.hidden) hidden.add(id)
+                else hidden.delete(id)
+              }
+              if ('thumbnailUrl' in b) vod.thumbnail_url = b.thumbnailUrl || null
+              if ('createdAt' in b) vod.createdAt = new Date(String(b.createdAt)).toISOString()
+              return send(res, 200, adminVod(vod))
+            }
+            if (part === 'games' && method === 'GET') {
+              if (!gameRows.has(id)) {
+                const page = (await publicJson(publicApi, `/games?vod_id=${encodeURIComponent(id)}&$limit=100&$sort[start_time]=1`)) as { data: Json[] }
+                gameRows.set(id, page.data)
+              }
+              return send(res, 200, gameRows.get(id))
+            }
+            if (part === 'games' && method === 'PUT') {
+              if (vod.merged_into) return fail(res, 409, `vod ${id} is merged into ${vod.merged_into.id}`)
+              if (!Array.isArray(b.games)) return fail(res, 400, 'games must be a list')
+              const dur = durOf(vod)
+              let prevStart = -1
+              let prevEnd = -1
+              const rows: Json[] = []
+              for (const [i, g] of (b.games as Json[]).entries()) {
+                const start = Number(g.start_time)
+                const end = Number(g.end_time)
+                if (!Number.isFinite(start) || start < 0) return fail(res, 400, `games[${i}].start_time must be a number of seconds >= 0`)
+                if (!Number.isFinite(end) || end <= start) return fail(res, 400, `games[${i}] must end after it starts`)
+                if (start < prevStart) return fail(res, 400, `games[${i}] starts before games[${i - 1}]; sort games by start_time`)
+                if (start < prevEnd - 0.5) return fail(res, 400, `games[${i}] starts at ${start}s, inside games[${i - 1}] (which ends at ${prevEnd}s)`)
+                if (dur > 0 && end > dur + 1) return fail(res, 400, `games[${i}] ends at ${end}s, after the end of the VOD (${dur}s)`)
+                if (typeof g.game_name !== 'string' || !g.game_name.trim()) return fail(res, 400, `games[${i}].game_name must be a non-empty string`)
+                prevStart = start
+                prevEnd = end
+                rows.push({ ...g, id: g.id ?? `mock-${id}-${i}`, vodId: id, start_time: String(start), end_time: String(end), updatedAt: iso() })
+              }
+              gameRows.set(id, rows)
               return send(res, 200, adminVod(vod))
             }
             if (part === 'chapters' && method === 'PUT') {

@@ -106,6 +106,8 @@ export interface BotChatInfo {
 }
 
 export interface AdminVod extends RawVod {
+  /** Hidden VODs are gone from the public site (list, watch page, games, chat) but kept here. */
+  hidden?: boolean
   chaptersLocked: boolean
   /** Null (or missing, from older workers) until a bot_chat job has read it. */
   botChat?: BotChatInfo | null
@@ -113,6 +115,96 @@ export interface AdminVod extends RawVod {
   jobs: Job[]
   /** Merges and splits touching this VOD, oldest first (undone ones included, with `undoneAt`). */
   splices?: Splice[]
+}
+
+/** A row of GET /admin/vods: every VOD, hidden and merged ones too. */
+export interface AdminVodRow {
+  id: string
+  title: string | null
+  createdAt: string
+  duration: string
+  duration_seconds: number
+  thumbnail_url: string | null
+  stream_id: string | null
+  hidden: boolean
+  merged_into: string | null
+}
+
+/** The fields PATCH /admin/vods/:id changes. A merged VOD takes only `hidden`. */
+export interface VodPatch {
+  title?: string
+  hidden?: boolean
+  /** An http(s) URL, or null for the default (YouTube's). */
+  thumbnailUrl?: string | null
+  /** HH:MM:SS; refused when chapters or games rows run past it. */
+  duration?: string
+  /** ISO 8601 with an offset. */
+  createdAt?: string
+}
+
+/** A games row (the public `/games` shape): which game was played when, for the games pages. */
+export interface GameRow {
+  id?: string
+  /** Seconds, as strings from the API; numbers are taken too. */
+  start_time: string | number
+  end_time: string | number
+  game_id: string | null
+  game_name: string
+  title?: string | null
+  thumbnail_url?: string | null
+  chapter_image?: string | null
+  video_provider?: string | null
+  video_id?: string | null
+}
+
+export type SettingType = 'bool' | 'int' | 'float' | 'text' | 'list' | 'steps'
+export type SettingValue = boolean | number | string | string[] | Record<string, string[]>
+
+/** One worker setting the dashboard can change (GET /admin/settings). */
+export interface RuntimeSetting {
+  key: string
+  value: SettingValue
+  /** The env value (or the built-in default): what Reset goes back to. */
+  default: SettingValue
+  overridden: boolean
+  type: SettingType
+  group: 'Capture' | 'YouTube' | 'Pipeline' | 'Runner' | string
+  /** "now": the next check, pick or step; "next job": jobs read it when they start or resume. */
+  applies: 'now' | 'next job'
+  help: string
+  min: number | null
+  max: number | null
+  updatedAt: string | null
+  updatedBy: string | null
+  /** For `steps`: each job kind's steps. */
+  choices?: Record<string, string[]>
+}
+
+/** A folder the worker keeps on disk (GET /admin/storage). */
+export interface StorageFolder {
+  area: 'vods' | 'live'
+  name: string
+  /** `<area>/<name>`, relative to the data directory. */
+  path: string
+  bytes: number
+  files: number
+  modifiedAt: string | null
+  vod: { id: string; title: string | null; hidden: boolean } | null
+  jobs: { active: StorageJob[]; last: StorageJob | null }
+  /** No job for it is queued, running or paused, and it has no VOD or its last job failed or was cancelled. */
+  stale: boolean
+}
+export interface StorageJob {
+  id: number
+  kind: string
+  state: JobState
+  step: string | null
+  updatedAt: string
+}
+export interface StorageView {
+  disk: { total: number; used: number; free: number } | null
+  folders: StorageFolder[]
+  cacheSeconds: number
 }
 
 /** A merge (`otherId` appended to `vodId` at `offset`) or split (`vodId` from `offset` on became `otherId`). */
@@ -349,11 +441,25 @@ export class AdminClient {
   }
 
   // ---- VODs ----
+  /** Newest first; `q` is an exact id or part of a title; `before` is the last page's `next`. */
+  vods(q: { q?: string; hidden?: boolean; limit?: number; before?: string } = {}, signal?: AbortSignal): Promise<{ data: AdminVodRow[]; next: string | null }> {
+    const params = new URLSearchParams()
+    for (const [k, v] of Object.entries(q)) if (v !== undefined && v !== '') params.set(k, String(v))
+    const qs = params.toString()
+    return this.request('GET', `/admin/vods${qs ? `?${qs}` : ''}`, undefined, signal)
+  }
   vod(id: string, signal?: AbortSignal): Promise<AdminVod> {
     return this.request('GET', `/admin/vods/${enc(id)}`, undefined, signal)
   }
-  updateVod(id: string, patch: { title?: string }): Promise<AdminVod> {
+  updateVod(id: string, patch: VodPatch): Promise<AdminVod> {
     return this.request('PATCH', `/admin/vods/${enc(id)}`, patch)
+  }
+  games(id: string, signal?: AbortSignal): Promise<GameRow[]> {
+    return this.request('GET', `/admin/vods/${enc(id)}/games`, undefined, signal)
+  }
+  /** Replaces the VOD's games rows: sorted by start, no overlaps, inside the duration. */
+  saveGames(id: string, games: GameRow[]): Promise<AdminVod> {
+    return this.request('PUT', `/admin/vods/${enc(id)}/games`, { games })
   }
   saveChapters(id: string, chapters: ChapterEdit[], locked: boolean): Promise<AdminVod> {
     return this.request('PUT', `/admin/vods/${enc(id)}/chapters`, { chapters, locked })
@@ -438,6 +544,25 @@ export class AdminClient {
   /** Bot chat for every VOD without it, or only `vodIds`; merged or split VODs are skipped. */
   botChatBackfill(vodIds?: string[]): Promise<ActionResult> {
     return this.request('POST', '/admin/bot-chat/backfill', vodIds?.length ? { vodIds } : {})
+  }
+
+  // ---- settings and storage ----
+  settings(signal?: AbortSignal): Promise<{ data: RuntimeSetting[] }> {
+    return this.request('GET', '/admin/settings', undefined, signal)
+  }
+  /** All of them or none (400 names the refused one). */
+  saveSettings(changes: Record<string, SettingValue>): Promise<{ data: RuntimeSetting[] }> {
+    return this.request('PATCH', '/admin/settings', changes)
+  }
+  resetSetting(key: string): Promise<{ data: RuntimeSetting[] }> {
+    return this.request('DELETE', `/admin/settings/${enc(key)}`)
+  }
+  storage(refresh = false, signal?: AbortSignal): Promise<StorageView> {
+    return this.request('GET', `/admin/storage${refresh ? '?refresh=true' : ''}`, undefined, signal)
+  }
+  /** 409 while a job for the folder is queued, running or paused. */
+  deleteFolder(area: string, name: string): Promise<{ path: string; bytes: number; files: number }> {
+    return this.request('DELETE', `/admin/storage/${enc(area)}/${enc(name)}`)
   }
 
   // ---- audit ----

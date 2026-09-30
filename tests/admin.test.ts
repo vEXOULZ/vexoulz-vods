@@ -87,3 +87,43 @@ describe('job helpers', () => {
   })
 
 })
+
+describe('AdminClient: VODs, games, settings and storage', () => {
+  it('lists VODs with only the filters given, and patches, reads and replaces games', async () => {
+    const fetch = fakeFetch(200, { data: [], next: null })
+    const c = new AdminClient({ base: '', fetch })
+    await c.vods({ q: 'doom', hidden: false, limit: 30, before: undefined })
+    await c.vods({ hidden: true })
+    await c.updateVod('12', { hidden: true, thumbnailUrl: null })
+    await c.games('12')
+    await c.saveGames('12', [{ start_time: 0, end_time: 60, game_id: '1', game_name: 'Doom' }])
+    const sent = fetch.mock.calls.map(([url, init]) => [url, init!.method, init!.body ?? null])
+    expect(sent).toEqual([
+      ['/admin/vods?q=doom&hidden=false&limit=30', 'GET', null],
+      ['/admin/vods?hidden=true', 'GET', null],
+      ['/admin/vods/12', 'PATCH', JSON.stringify({ hidden: true, thumbnailUrl: null })],
+      ['/admin/vods/12/games', 'GET', null],
+      ['/admin/vods/12/games', 'PUT', JSON.stringify({ games: [{ start_time: 0, end_time: 60, game_id: '1', game_name: 'Doom' }] })],
+    ])
+  })
+
+  it('reads, saves and resets settings, and reads and deletes storage', async () => {
+    const fetch = fakeFetch(200, { data: [] })
+    const c = new AdminClient({ base: '', fetch })
+    await c.settings()
+    await c.saveSettings({ runner_concurrency: 2, vod_download: false })
+    await c.resetSetting('runner_concurrency')
+    await c.storage()
+    await c.storage(true)
+    await c.deleteFolder('vods', '123')
+    const sent = fetch.mock.calls.map(([url, init]) => [url, init!.method, init!.body ?? null])
+    expect(sent).toEqual([
+      ['/admin/settings', 'GET', null],
+      ['/admin/settings', 'PATCH', JSON.stringify({ runner_concurrency: 2, vod_download: false })],
+      ['/admin/settings/runner_concurrency', 'DELETE', null],
+      ['/admin/storage', 'GET', null],
+      ['/admin/storage?refresh=true', 'GET', null],
+      ['/admin/storage/vods/123', 'DELETE', null],
+    ])
+  })
+})
