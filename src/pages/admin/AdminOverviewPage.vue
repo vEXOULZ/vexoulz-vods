@@ -3,7 +3,7 @@ import { timeAgo, VxButton, VxCallout, VxChip, VxSkeleton, VxStatusDot, useToast
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { JOB_STATES } from '@/admin/api'
-import AdminShell from '@/admin/AdminShell.vue'
+import ManageShell from '@/admin/ManageShell.vue'
 import JobsTable from '@/admin/JobsTable.vue'
 import { STATE_TONE } from '@/admin/format'
 import { admin } from '@/admin/session'
@@ -13,7 +13,7 @@ import { errorMessage } from '@/lib/errors'
 const { data: health, error, loading, refresh } = usePoll((signal) => admin.health(signal), 15_000)
 const toast = useToast()
 
-onMounted(() => (document.title = 'Overview · Admin · vods.vexoulz.net'))
+onMounted(() => (document.title = 'Overview · Manage · vods.vexoulz.net'))
 
 type Dot = 'live' | 'ok' | 'warn' | 'off'
 const tiles = computed(() => {
@@ -52,7 +52,7 @@ async function backfillBotChat() {
   try {
     const res = await admin.botChatBackfill()
     toast.show(res.msg, { duration: 3500 })
-    if (res.jobId != null) void router.push(`/admin/jobs/${res.jobId}`)
+    if (res.jobId != null) void router.push(`/manage/jobs/${res.jobId}`)
   } catch (e) {
     toast.show(`Couldn't start the bot chat backfill: ${errorMessage(e)}`, { kind: 'error', duration: 5000 })
   } finally {
@@ -71,11 +71,11 @@ async function connectYoutube() {
 </script>
 
 <template>
-  <AdminShell title="Overview">
+  <ManageShell title="Overview">
     <template #actions>
       <VxButton :loading="loading" @click="refresh">Refresh</VxButton>
       <VxButton :loading="backfilling" title="Read doomtp-bot’s chat for every VOD that doesn’t have it yet" @click="backfillBotChat">Backfill bot chat</VxButton>
-      <VxButton variant="primary" to="/admin/jobs?new=1">Start a job</VxButton>
+      <VxButton variant="primary" to="/manage/jobs?new=1">Start a job</VxButton>
     </template>
 
     <VxCallout v-if="error" tone="error" title="Couldn't load the archive's status">
@@ -100,7 +100,7 @@ async function connectYoutube() {
       <section>
         <h2 class="vx-eyebrow">Jobs</h2>
         <div class="counts">
-          <RouterLink v-for="s in JOB_STATES" :key="s" :to="`/admin/jobs?state=${s}`" class="count">
+          <RouterLink v-for="s in JOB_STATES" :key="s" :to="`/manage/jobs?state=${s}`" class="count">
             <VxChip :tone="health.jobs.counts[s] ? STATE_TONE[s] : 'default'" :k="s">{{ health.jobs.counts[s] ?? 0 }}</VxChip>
           </RouterLink>
         </div>
@@ -111,7 +111,7 @@ async function connectYoutube() {
         <JobsTable :jobs="health.jobs.recentFailures" empty="No failed jobs. 🎉" />
       </section>
     </template>
-  </AdminShell>
+  </ManageShell>
 </template>
 
 <style scoped>

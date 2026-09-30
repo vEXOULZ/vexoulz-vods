@@ -1,5 +1,5 @@
-// The admin session: one client and one reactive session for the whole app. The router guard calls `ensure()`;
-// any 401 from the API drops the session so the next navigation lands on the login page.
+// The admin session: one client and one reactive session for the whole app. The router guard calls `ensure()` for
+// the Manage pages, and main.ts for anyone signed in to the account; any 401 from the API drops the session.
 import { reactive, readonly } from 'vue'
 import { AdminApiError, AdminClient, type AdminUser, type Session } from './api'
 
@@ -28,9 +28,17 @@ function apply(s: Session) {
   admin.csrf = s.csrf
 }
 
-/** Where "Sign in with Twitch" starts: the worker sends the browser through vexoulz-auth and back to `next`. */
+/**
+ * Where "Sign in with Twitch" starts: the worker sends the browser through vexoulz-auth (signing in to the site's
+ * account on the way, if it wasn't) and back to `next`.
+ */
 export function twitchLoginUrl(next: string): string {
   return `${adminBase}/admin/signin?${new URLSearchParams({ next })}`
+}
+
+/** The quiet check (src/admin/quiet.ts): back to `next` with `admin=1` or `admin=0`, never a page of its own. */
+export function quietLoginUrl(next: string): string {
+  return `${adminBase}/admin/signin?${new URLSearchParams({ quiet: '1', next })}`
 }
 
 /** Why a Twitch sign-in came back to the login page (`?auth_error=` from the worker's callback). */
@@ -54,7 +62,7 @@ admin.onUnauthorized = () => {
   if (!state.authenticated) return
   state.authenticated = false
   admin.csrf = null
-  state.notice = 'Your session ended. Log in again.'
+  state.notice = 'Your session ended. Sign in again.'
   onExpired?.()
 }
 

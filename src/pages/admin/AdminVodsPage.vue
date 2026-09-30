@@ -1,11 +1,11 @@
 <script setup lang="ts">
-// /admin/vods?q=: find a VOD to edit (title search on the public API, or open an id), and add ones the monitor missed.
+// /manage/vods?q=: find a VOD to edit (title search on the public API, or open an id), and add ones the monitor missed.
 import { VxButton, VxCallout, VxChip, VxDialog, VxField, VxInput, VxSkeleton, VxTable, useToast, type TableColumn } from '@vexoulz/ui'
 import { toClock } from '@vexoulz/vods-core'
 import { useVods } from '@vexoulz/vods-core/vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import AdminShell from '@/admin/AdminShell.vue'
+import ManageShell from '@/admin/ManageShell.vue'
 import { admin } from '@/admin/session'
 import { errorMessage } from '@/lib/errors'
 import { watchDebounced } from '@/composables/watchDebounced'
@@ -60,7 +60,7 @@ async function add(mode: 'archive' | 'create') {
     const res = mode === 'archive' ? await admin.archiveFromTwitch(id) : await admin.createFromTwitch(id)
     toast.show(res.msg, { duration: 3500 })
     addOpen.value = false
-    router.push(`/admin/vods/${id}`)
+    router.push(`/manage/vods/${id}`)
   } catch (e) {
     toast.show(errorMessage(e), { kind: 'error', duration: 6000 })
   } finally {
@@ -68,11 +68,11 @@ async function add(mode: 'archive' | 'create') {
   }
 }
 
-onMounted(() => (document.title = 'VODs · Admin · vods.vexoulz.net'))
+onMounted(() => (document.title = 'VODs · Manage · vods.vexoulz.net'))
 </script>
 
 <template>
-  <AdminShell title="VODs">
+  <ManageShell title="VODs">
     <template #actions>
       <VxButton variant="primary" @click="addId = ''; addOpen = true">Add from Twitch</VxButton>
     </template>
@@ -81,7 +81,7 @@ onMounted(() => (document.title = 'VODs · Admin · vods.vexoulz.net'))
       <VxInput v-model="draft" type="search" placeholder="Search titles, or paste a VOD id…" clearable>
         <template #icon>⌕</template>
       </VxInput>
-      <VxButton v-if="idLike" :to="`/admin/vods/${idLike}`" variant="primary">Open VOD {{ idLike }}</VxButton>
+      <VxButton v-if="idLike" :to="`/manage/vods/${idLike}`" variant="primary">Open VOD {{ idLike }}</VxButton>
     </div>
 
     <VxCallout v-if="error" tone="error" title="Couldn't load the VODs">
@@ -91,9 +91,9 @@ onMounted(() => (document.title = 'VODs · Admin · vods.vexoulz.net'))
     <div v-else-if="loading && !vods.length" class="sk" aria-busy="true"><VxSkeleton v-for="i in 6" :key="i" h="36px" /></div>
     <template v-else>
       <VxTable :columns="columns" :rows="rows" row-key="id" manual label="VODs" empty="No VODs match.">
-        <template #cell-id="{ row }"><RouterLink :to="`/admin/vods/${row.id}`">{{ row.id }}</RouterLink></template>
+        <template #cell-id="{ row }"><RouterLink :to="`/manage/vods/${row.id}`">{{ row.id }}</RouterLink></template>
         <template #cell-title="{ row }">
-          <RouterLink :to="`/admin/vods/${row.id}`" class="title">{{ row.title }}</RouterLink>
+          <RouterLink :to="`/manage/vods/${row.id}`" class="title">{{ row.title }}</RouterLink>
           <VxChip v-if="!row.chapters" tone="warn">no chapters</VxChip>
         </template>
         <template #cell-parts="{ row }">
@@ -120,7 +120,7 @@ onMounted(() => (document.title = 'VODs · Admin · vods.vexoulz.net'))
         <VxButton variant="primary" :disabled="addBad" :loading="adding === 'archive'" @click="add('archive')">Archive it</VxButton>
       </template>
     </VxDialog>
-  </AdminShell>
+  </ManageShell>
 </template>
 
 <style scoped>

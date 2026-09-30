@@ -1,8 +1,11 @@
 <script setup lang="ts">
-// Frame for every public page: the site shell with the public nav and the account menu (the shared sign-in).
-// Slots pass through to VxSiteShell.
+// Frame for every page: the site shell with the public nav, the account menu (the shared sign-in), and a "Manage"
+// button in the header while an admin's dashboard session is live (the Manage bar itself is on the Manage pages,
+// src/admin/ManageShell.vue). Slots pass through to VxSiteShell.
 import { VxSiteShell } from '@vexoulz/ui'
+import { session } from '@/admin/session'
 import AccountMenu from './AccountMenu.vue'
+import ManageLink from './ManageLink.vue'
 import { NAV } from '@/lib/nav'
 
 withDefaults(defineProps<{ fill?: boolean; header?: boolean; sky?: 'full' | 'dim' | 'off' }>(), { header: true })
@@ -11,6 +14,9 @@ withDefaults(defineProps<{ fill?: boolean; header?: boolean; sky?: 'full' | 'dim
 <template>
   <VxSiteShell site="vods" :nav="NAV" :fill="fill" :header="header" :sky="sky">
     <template v-for="(_, name) in $slots" #[name]="scope"><slot :name="name" v-bind="scope ?? {}"></slot></template>
+    <template v-if="!$slots.actions && session.authenticated" #actions>
+      <ManageLink />
+    </template>
     <template v-if="!$slots.account" #account>
       <AccountMenu />
     </template>

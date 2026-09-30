@@ -1,4 +1,4 @@
-// Dev-only stand-in for the worker admin API (docs/admin-api.md), so `npm run dev` can show /admin without a real
+// Dev-only stand-in for the worker admin API (docs/admin-api.md), so `npm run dev` can show /manage without a real
 // archive. Fake data, in memory; jobs advance on their own. Password: "admin"; "Sign in with Twitch" signs in a fake
 // Twitch admin at once (no vexoulz-auth). Never part of a build.
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -406,11 +406,21 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
           }
         }
 
-        // The worker goes through vexoulz-auth here; the mock signs the fake Twitch admin in straight away.
+        // The worker goes through vexoulz-auth here; the mock signs the fake Twitch admin in straight away. A quiet
+        // check (?quiet=1) comes back with admin=1, or admin=0 when MOCK_ADMIN_QUIET=no (a plain viewer).
         if (path === '/admin/signin' && method === 'GET') {
-          const token = newSession(TWITCH_ADMIN)
-          const next = url.searchParams.get('next') ?? ''
-          res.writeHead(302, { location: next.startsWith('/admin') && !next.startsWith('//') ? next : '/admin', 'set-cookie': sessionCookie(token) })
+          let next = url.searchParams.get('next') ?? ''
+          if (!next.startsWith('/') || next.startsWith('//')) next = '/manage'
+          const quiet = url.searchParams.get('quiet') === '1'
+          const yes = !quiet || process.env.MOCK_ADMIN_QUIET !== 'no'
+          const headers: Record<string, string> = {}
+          if (yes) headers['set-cookie'] = sessionCookie(newSession(TWITCH_ADMIN))
+          if (quiet) {
+            const back = new URL(next, 'http://x')
+            back.searchParams.set('admin', yes ? '1' : '0')
+            next = back.pathname + back.search + back.hash
+          }
+          res.writeHead(302, { location: next, ...headers })
           return res.end()
         }
 
@@ -423,7 +433,7 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
             if (res.statusCode >= 400) return
             const am = /\/admin\/(vods|jobs)\/([^/]+)/.exec(path)
             const target = am ? `${am[1] === 'vods' ? 'vod' : 'job'}:${am[2]}` : b.vodId ? `vod:${b.vodId}` : null
-            audit.unshift({ id: ++auditId, at: iso(), actor: s.user ? `twitch:${s.user.id}` : 'password', action: `${method} ${path.replace(/\/\d+/g, '/{id}')}`, target, detail: Object.keys(b).length ? b : null })
+            audit.unshift({ id: ++auditId, at: iso(), actor: s.user ? `twitch:${s.user.id}` : 'password', actorLogin: s.user?.login ?? null, action: `${method} ${path.replace(/\/\d+/g, '/{id}')}`, target, detail: Object.keys(b).length ? b : null })
           })
         }
 

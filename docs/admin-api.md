@@ -1,4 +1,4 @@
-# Admin API contract (what `/admin` on this site expects)
+# Admin API contract (what `/manage` on this site expects)
 
 The admin pages talk to twitch-archive's **worker admin API** (the existing `/admin/*` routes), reached from the
 browser at `<adminBase>` — by default `/backend-admin` on the site's own origin, the same way the public archive API
@@ -19,14 +19,14 @@ The existing `Authorization: Bearer <admin api key>` keeps working for scripts. 
 
 | Request | Response |
 |---|---|
-| `GET /admin/session` (no auth) | `200 {"authenticated": bool, "csrf": string \| null, "expiresAt": string \| null, "passwordLogin": bool}` |
+| `GET /admin/session` (no auth) | `200 {"authenticated": bool, "csrf": string \| null, "expiresAt": string \| null, "passwordLogin": bool, "twitchLogin": bool, "user": {...} \| null}` (1b) |
 | `POST /admin/session` `{"password": "..."}` | `200` same shape + `Set-Cookie`; `401` wrong password; `429` with `Retry-After` when rate-limited; `404` when no password is configured (`passwordLogin: false`); `403` from outside `ARCHIVE_ADMIN_PASSWORD_NETWORKS` |
 | `DELETE /admin/session` (needs CSRF) | `204`, cookie cleared |
 
 - Password from a new setting (e.g. `ARCHIVE_ADMIN_PASSWORD`), hashed with scrypt at startup and compared in constant
   time (same approach as doomtp-bot's `webui/auth.py`). No password configured → password login is off.
-- Cookie `archive_admin`: random token, `HttpOnly; Secure; SameSite=Strict; Path=/`, 8 h lifetime. Sessions may live in
-  memory (a restart logs admins out).
+- Cookie `archive_admin`: random token, `HttpOnly; Secure; SameSite=Strict; Path=/`, 8 h lifetime. Sessions are kept
+  in the archive's database (twitch-archive PR #29), so a worker restart keeps admins signed in.
 - Every `/admin/*` route accepts **either** the Bearer key **or** a valid session cookie. With the cookie, any
   non-GET request must send `X-CSRF-Token: <csrf>`; mismatch → `403`.
 - Rate-limit failed logins (e.g. 5 per 5 minutes per client address). If the client address comes from a forwarded
@@ -39,10 +39,19 @@ The existing `Authorization: Bearer <admin api key>` keeps working for scripts. 
   `GET /admin/session` says whether it is offered to the caller's address.
 - `GET /admin/session` also returns `twitchLogin: bool` (vexoulz-auth is configured) and `user` (the Twitch
   `{id, login, displayName, avatar, color}`, null for a password session).
-- `GET /admin/signin?next=/admin/...` → vexoulz-auth → `GET /admin/signin/callback`, which sets the same `archive_admin`
+- `GET /admin/signin?next=/manage/...` → vexoulz-auth → `GET /admin/signin/callback`, which sets the same `archive_admin`
   cookie and redirects to `next`. Only `ARCHIVE_ADMIN_TWITCH_IDS` get a session. On failure it redirects to
   `/admin/login?auth_error=<denied|expired|twitch|not_allowed|unavailable|misconfigured>&next=...`.
-- Audit entries from a Twitch session record the actor as `twitch:<id>`.
+- Audit entries from a Twitch session record the actor as `twitch:<id>`, and carry `actorLogin` (the Twitch login;
+  null for the password, the API key and older entries).
+- The site keeps `/admin/login` working as a redirect to `/manage/login`, since that's where the worker sends errors.
+
+### 1c. The quiet check (twitch-archive PR #29)
+
+- `GET /admin/signin?quiet=1&next=/...` works the same, except that the callback never shows an error: it always goes
+  back to `next` with `admin=1` (a session was made) or `admin=0` (not on the list, denied, unavailable, anything).
+- The site only sends someone already signed in to the account, so vexoulz-auth answers at once and nobody sees
+  Twitch. It remembers the answer per browser and Twitch account (`src/admin/quiet.ts`).
 
 ## 2. Health — new
 

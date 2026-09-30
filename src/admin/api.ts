@@ -210,7 +210,10 @@ export interface AdminEmotes extends RawEmoteSets {
 export interface AuditEntry {
   id: number
   at: string
-  actor: 'password' | 'api-key'
+  /** "password", "api-key" or "twitch:<id>" (a Twitch sign-in). */
+  actor: 'password' | 'api-key' | `twitch:${string}`
+  /** The Twitch login of whoever signed in, when there was one (older entries have none). */
+  actorLogin?: string | null
   /** "METHOD /route/{param}". */
   action: string
   /** "vod:<id>", "job:<id>" or null. */

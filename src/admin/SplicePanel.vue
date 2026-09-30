@@ -166,7 +166,7 @@ function unmergeHere() {
       The descriptions of {{ touched.join(' and ') }} still list the parts as they were.
       <template #actions>
         <VxButton size="sm" variant="primary" :loading="describing" @click="describe">Update descriptions</VxButton>
-        <VxButton v-for="id in touched.filter((x) => x !== vod.id)" :key="id" size="sm" :to="`/admin/vods/${id}`">Open {{ id }}</VxButton>
+        <VxButton v-for="id in touched.filter((x) => x !== vod.id)" :key="id" size="sm" :to="`/manage/vods/${id}`">Open {{ id }}</VxButton>
         <VxButton size="sm" @click="touched = []">Later</VxButton>
       </template>
     </VxCallout>
@@ -177,10 +177,10 @@ function unmergeHere() {
     </VxCallout>
 
     <VxCallout v-if="mergedInto" tone="info" title="Merged into another VOD">
-      Its video, chapters and chat are part of <RouterLink :to="`/admin/vods/${mergedInto.id}`" class="vx-mono">{{ mergedInto.id }}</RouterLink>
+      Its video, chapters and chat are part of <RouterLink :to="`/manage/vods/${mergedInto.id}`" class="vx-mono">{{ mergedInto.id }}</RouterLink>
       now, from {{ toClock(mergedInto.offset) }}. Old links to this VOD open that one at the same moment.
       <template #actions>
-        <VxButton size="sm" :to="`/admin/vods/${mergedInto.id}`">Open {{ mergedInto.id }}</VxButton>
+        <VxButton size="sm" :to="`/manage/vods/${mergedInto.id}`">Open {{ mergedInto.id }}</VxButton>
         <VxButton size="sm" :loading="busy === 'unmerge'" @click="unmergeHere">Unmerge</VxButton>
       </template>
     </VxCallout>
@@ -203,7 +203,7 @@ function unmergeHere() {
         <ul v-else class="list">
           <li v-for="c in cands.candidates" :key="c.id" class="row">
             <div class="what">
-              <RouterLink :to="`/admin/vods/${c.id}`" class="vx-mono">{{ c.id }}</RouterLink>
+              <RouterLink :to="`/manage/vods/${c.id}`" class="vx-mono">{{ c.id }}</RouterLink>
               <span class="title">{{ c.title || 'Untitled' }}</span>
               <span class="vx-muted small" :title="stamp(c.createdAt)">{{ new Date(c.createdAt).toLocaleString() }} · {{ c.duration }}</span>
             </div>

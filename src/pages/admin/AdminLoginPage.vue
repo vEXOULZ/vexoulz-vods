@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { VxButton, VxCallout, VxField, VxInput, VxSiteShell } from '@vexoulz/ui'
+// /manage/login: where a Manage page sends someone without a dashboard session when the Twitch sign-in is off or
+// failed, or after a session ended; and the admin password, for the archive's local network.
+import { VxButton, VxCallout, VxField, VxInput } from '@vexoulz/ui'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { AdminApiError } from '@/admin/api'
+import VodsShell from '@/components/VodsShell.vue'
 import { ensure, login, session, SIGNIN_ERRORS, twitchLoginUrl } from '@/admin/session'
 
 const route = useRoute()
@@ -14,8 +17,8 @@ const error = ref<string | null>(null)
 
 const next = computed(() => {
   const n = route.query.next
-  // Only paths inside the admin area: never an absolute URL from the query.
-  return typeof n === 'string' && n.startsWith('/admin') && !n.startsWith('//') ? n : '/admin'
+  // Only paths inside Manage: never an absolute URL from the query.
+  return typeof n === 'string' && n.startsWith('/manage') && !n.startsWith('//') ? n : '/manage'
 })
 
 /** A failed Twitch sign-in, as the worker's callback reports it. */
@@ -27,7 +30,7 @@ const signinError = computed(() => {
 const offered = computed(() => session.passwordLogin || session.twitchLogin)
 
 onMounted(async () => {
-  document.title = 'Admin · vods.vexoulz.net'
+  document.title = 'Sign in · Manage · vods.vexoulz.net'
   await ensure()
   if (session.authenticated) router.replace(next.value)
   else if (!session.twitchLogin) field.value?.focus()
@@ -56,10 +59,10 @@ async function submit() {
 </script>
 
 <template>
-  <VxSiteShell site="vods" sky="dim">
+  <VodsShell sky="dim">
     <form class="login vx-panel" @submit.prevent="submit">
       <div class="vx-eyebrow">vods.vexoulz.net</div>
-      <h1 class="vx-display">Admin</h1>
+      <h1 class="vx-display">Manage</h1>
       <VxCallout v-if="signinError" tone="error">{{ signinError }}</VxCallout>
       <VxCallout v-else-if="session.notice && !error" tone="warn">{{ session.notice }}</VxCallout>
       <VxCallout v-if="session.checked && !offered" tone="warn" title="Sign-in is off">
@@ -81,7 +84,7 @@ async function submit() {
         <VxButton type="submit" :variant="session.twitchLogin ? 'default' : 'primary'" :loading="busy" :disabled="!password">Log in</VxButton>
       </template>
     </form>
-  </VxSiteShell>
+  </VodsShell>
 </template>
 
 <style scoped>

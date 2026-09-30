@@ -1,10 +1,10 @@
 <script setup lang="ts">
-// /admin/jobs?state=&kind=&vodId=: the job queue, refreshed every few seconds. Filters live in the URL.
+// /manage/jobs?state=&kind=&vodId=: the job queue, refreshed every few seconds. Filters live in the URL.
 import { VxButton, VxCallout, VxInput, VxSelect, VxSkeleton, VxTabs, type Option } from '@vexoulz/ui'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { Job, JobKind } from '@/admin/api'
-import AdminShell from '@/admin/AdminShell.vue'
+import ManageShell from '@/admin/ManageShell.vue'
 import JobsTable from '@/admin/JobsTable.vue'
 import StartJobDialog from '@/admin/StartJobDialog.vue'
 import { admin } from '@/admin/session'
@@ -88,11 +88,11 @@ const starting = computed({
 })
 function started(id: number) {
   starting.value = false
-  router.push(`/admin/jobs/${id}`)
+  router.push(`/manage/jobs/${id}`)
 }
 
 onMounted(async () => {
-  document.title = 'Jobs · Admin · vods.vexoulz.net'
+  document.title = 'Jobs · Manage · vods.vexoulz.net'
   try {
     kinds.value = await admin.kinds()
   } catch {
@@ -102,7 +102,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <AdminShell title="Jobs">
+  <ManageShell title="Jobs">
     <template #actions>
       <VxButton :loading="loading" @click="refresh">Refresh</VxButton>
       <VxButton variant="primary" @click="starting = true">Start a job</VxButton>
@@ -133,7 +133,7 @@ onMounted(async () => {
     </template>
 
     <StartJobDialog v-model:open="starting" :kinds="kinds" :vod-id="vodId" @started="started" />
-  </AdminShell>
+  </ManageShell>
 </template>
 
 <style scoped>
