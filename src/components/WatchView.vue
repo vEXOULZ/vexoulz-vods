@@ -25,12 +25,13 @@ import {
   type Span,
   type Timeline,
   type Vod,
+  type ChatSources,
 } from '@vexoulz/vods-core'
 import { useChat, useProgress } from '@vexoulz/vods-core/vue'
 import { computed, onMounted, onUnmounted, ref, shallowRef, toRef, watch, watchEffect } from 'vue'
 import ChatPanel from '@/components/ChatPanel.vue'
 import WatchTimeline from '@/components/WatchTimeline.vue'
-import { useChatSettings } from '@/composables/useChatSettings'
+import { chatSourceFor, useChatSettings } from '@/composables/useChatSettings'
 import { useFullscreen } from '@/composables/useFullscreen'
 import { useShortcuts, type Shortcut } from '@/composables/useShortcuts'
 import { cutNote, unplayable } from '@/lib/cuts'
@@ -165,7 +166,20 @@ async function copyLink() {
 const downloadUrl = computed(() => (props.download ? `https://drive.google.com/open?id=${encodeURIComponent(props.download.id)}` : null))
 
 // ---- chat + progress ----
-const replay = useChat({ vodId: () => props.vod.id, time, playing, offset: toRef(chat, 'delay') })
+// The chats this VOD has, once chat's first page says (kept here, since useChat's own ref doesn't exist yet when
+// its options are first read). Tagged with the VOD, so the next VOD doesn't start from this one's.
+const knownSources = shallowRef<{ vodId: string; sources: ChatSources } | null>(null)
+const replay = useChat({
+  vodId: () => props.vod.id,
+  time,
+  playing,
+  offset: toRef(chat, 'delay'),
+  chatSource: () =>
+    chatSourceFor(chat.source, knownSources.value?.vodId === props.vod.id ? knownSources.value.sources : null),
+})
+watch(replay.sources, (s) => {
+  if (s) knownSources.value = { vodId: props.vod.id, sources: s }
+})
 const chatError = computed(() => replay.error.value?.message ?? null)
 if (props.track) useProgress({ vodId: () => props.vod.id, duration: () => props.vod.duration, time, playing })
 
@@ -332,7 +346,16 @@ useShortcuts(() => shortcuts.value)
         </div>
       </section>
 
-      <ChatPanel v-if="chat.open" :messages="replay.messages.value" :settings="chat" :error="chatError" :playing="playing" @hide="chat.open = false" />
+      <ChatPanel
+        v-if="chat.open"
+        :messages="replay.messages.value"
+        :settings="chat"
+        :error="chatError"
+        :playing="playing"
+        :sources="replay.sources.value"
+        :served="replay.served.value"
+        @hide="chat.open = false"
+      />
     </div>
   </VodsShell>
 </template>

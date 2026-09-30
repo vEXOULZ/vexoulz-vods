@@ -91,8 +91,24 @@ export interface LaunchJob {
 }
 
 /** GET /admin/vods/{id}: the VOD as the public API renders it, plus what only admins need. */
+/** What the last bot_chat job read from doomtp-bot's log for a VOD (twitch-archive `vods.bot_chat`). */
+export interface BotChatInfo {
+  fetched_at: string
+  /** The span asked for (the VOD's, ISO). */
+  since?: string
+  until?: string
+  /** Read with a doomtp key, so removals (deletes, timeouts) and their reasons are included. */
+  keyed: boolean
+  /** Messages stored for the VOD. */
+  rows?: number
+  /** When the bot was listening; `gaps` are the spans it missed (ms since the epoch). */
+  coverage?: { gaps?: { from: number; to: number; reason?: string | null }[] } | null
+}
+
 export interface AdminVod extends RawVod {
   chaptersLocked: boolean
+  /** Null (or missing, from older workers) until a bot_chat job has read it. */
+  botChat?: BotChatInfo | null
   /** Recent jobs for this VOD, newest first. */
   jobs: Job[]
   /** Merges and splits touching this VOD, oldest first (undone ones included, with `undoneAt`). */
@@ -411,6 +427,14 @@ export class AdminClient {
   }
   backfillGlobalEmotes(vodIds?: string[]): Promise<ActionResult> {
     return this.request('POST', '/admin/emotes/backfill', vodIds?.length ? { vodIds } : {})
+  }
+  /** Read the VOD's chat from doomtp-bot's log (adds or updates rows; 409 while one runs for it). */
+  botChat(vodId: string): Promise<ActionResult> {
+    return this.request('POST', '/admin/bot-chat', { vodId })
+  }
+  /** Bot chat for every VOD without it, or only `vodIds`; merged or split VODs are skipped. */
+  botChatBackfill(vodIds?: string[]): Promise<ActionResult> {
+    return this.request('POST', '/admin/bot-chat/backfill', vodIds?.length ? { vodIds } : {})
   }
 
   // ---- audit ----

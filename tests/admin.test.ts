@@ -24,6 +24,20 @@ describe('AdminClient', () => {
     expect((init2!.headers as Record<string, string>)['x-csrf-token']).toBe('tok')
   })
 
+  it('starts bot chat for one VOD, and backfills all or only some', async () => {
+    const fetch = fakeFetch(200, { error: false, msg: 'ok', jobId: 3 })
+    const c = new AdminClient({ base: '', fetch })
+    await c.botChat('123')
+    await c.botChatBackfill()
+    await c.botChatBackfill(['1', '2'])
+    const sent = fetch.mock.calls.map(([url, init]) => [url, init!.method, init!.body])
+    expect(sent).toEqual([
+      ['/admin/bot-chat', 'POST', JSON.stringify({ vodId: '123' })],
+      ['/admin/bot-chat/backfill', 'POST', JSON.stringify({})],
+      ['/admin/bot-chat/backfill', 'POST', JSON.stringify({ vodIds: ['1', '2'] })],
+    ])
+  })
+
   it('turns worker errors into AdminApiError with the message and Retry-After', async () => {
     const c = new AdminClient({ base: '', fetch: fakeFetch(429, { error: true, msg: 'Too many attempts' }, { 'retry-after': '120' }) })
     const err = await c.login('x').catch((e: unknown) => e)

@@ -24,6 +24,8 @@ const KINDS: Record<string, { steps: string[]; manualSteps: string[] }> = {
   emotes: { steps: ['emotes'], manualSteps: [] },
   describe: { steps: ['describe'], manualSteps: [] },
   global_emotes_backfill: { steps: ['global_emotes_backfill'], manualSteps: [] },
+  bot_chat: { steps: ['bot_chat'], manualSteps: [] },
+  bot_chat_backfill: { steps: ['bot_chat_backfill'], manualSteps: [] },
 }
 
 interface Job {
@@ -90,6 +92,7 @@ function advance() {
       job.state = 'done'
       job.step = null
       log(job, 'Job done')
+      if (job.kind === 'bot_chat' && job.vodId) botChats.set(job.vodId, fakeBotChat(job.vodId))
     } else {
       job.step = steps[i + 1]!
       if (job.pauseNext || job.pauseBefore?.includes(job.step)) {
@@ -153,6 +156,18 @@ type Json = Record<string, any>
 const vods = new Map<string, Json>()
 const deleted = new Set<string>()
 const locked = new Set<string>()
+/** vods.bot_chat, set when a mock bot_chat job finishes. */
+const botChats = new Map<string, Json>()
+function fakeBotChat(vodId: string): Json {
+  const now = Date.now()
+  const odd = Number(vodId.slice(-1)) % 2 === 1
+  return {
+    fetched_at: new Date(now).toISOString(),
+    keyed: odd,
+    rows: 1000 + (Number(vodId.slice(-4)) % 5000),
+    coverage: { gaps: odd ? [] : [{ from: now - 3_600_000, to: now - 3_540_000, reason: 'reconnect' }] },
+  }
+}
 const emoteRows = new Map<string, Json | null>()
 const audit: Json[] = []
 let auditId = 0
@@ -178,6 +193,7 @@ async function vodOf(api: string, id: string): Promise<Json | null> {
 const adminVod = (v: Json) => ({
   ...v,
   chaptersLocked: locked.has(String(v.id)),
+  botChat: botChats.get(String(v.id)) ?? null,
   jobs: jobs.filter((j) => j.vodId === v.id).slice(0, 20).map(json),
   splices: splicesOf(String(v.id)),
 })
@@ -360,7 +376,7 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
         const id = pm ? decodeURIComponent(pm[1]!) : ''
         if (!pm || !spliced.has(id)) return next()
         if (deleted.has(id)) return send(res, 404, { name: 'NotFound', message: 'No record found', code: 404 })
-        const { chaptersLocked: _c, jobs: _j, splices: _s, ...pub } = adminVod(vods.get(id)!)
+        const { chaptersLocked: _c, botChat: _b, jobs: _j, splices: _s, ...pub } = adminVod(vods.get(id)!)
         return send(res, 200, pub)
       })
       server.middlewares.use(base, async (req, res) => {
@@ -597,16 +613,21 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
         const vodId = b.vodId ? String(b.vodId) : ''
         const start = (kind: string, msg: string) => ok(res, msg, add(kind, vodId || null, 'queued', 0, 0, { payload: { ...b } }))
         if (method === 'POST' || method === 'DELETE') {
-          const needsVod = ['/admin/chapters', '/admin/emotes', '/admin/logs', '/admin/duration', '/admin/youtube/parts', '/admin/download', '/admin/reupload', '/admin/delete']
+          const needsVod = ['/admin/bot-chat', '/admin/chapters', '/admin/emotes', '/admin/logs', '/admin/duration', '/admin/youtube/parts', '/admin/download', '/admin/reupload', '/admin/delete']
           if (needsVod.includes(path) && !(await vodOf(publicApi, vodId))) return fail(res, 404, 'No Vod Data')
           // A merged or split VOD no longer matches Twitch's VOD of that id: the worker refuses to re-fetch it.
-          const twitch = ['/admin/chapters', '/admin/emotes', '/admin/logs', '/admin/duration', '/admin/download', '/admin/reupload', '/admin/delete', '/admin/hls/download']
+          const twitch = ['/admin/chapters', '/admin/emotes', '/admin/logs', '/admin/duration', '/admin/download', '/admin/reupload', '/admin/delete', '/admin/hls/download', '/admin/bot-chat']
           if (twitch.includes(path) && (vods.get(vodId)?.merged_into || splicesOf(vodId).some((sp) => !sp.undoneAt)))
             return fail(res, 409, `vod ${vodId} was merged or split; it no longer matches Twitch's VOD of that id`)
           switch (path) {
             case '/admin/chapters': return start('chapters', `Saving Chapters for ${vodId}`)
             case '/admin/emotes': return start('emotes', b.force ? 'Saving emotes (overwriting)..' : 'Saving emotes..')
             case '/admin/emotes/backfill': return start('global_emotes_backfill', 'Backfilling global emotes..')
+            case '/admin/bot-chat':
+              if (jobs.some((j) => j.kind === 'bot_chat' && j.vodId === vodId && ['queued', 'running', 'paused'].includes(j.state)))
+                return fail(res, 409, `A bot chat job for ${vodId} is already running`)
+              return start('bot_chat', `Reading bot chat for ${vodId}..`)
+            case '/admin/bot-chat/backfill': return start('bot_chat_backfill', 'Backfilling bot chat..')
             case '/admin/logs': return start('chat', 'Getting logs..')
             case '/admin/youtube/parts': return start('describe', `Updating YouTube descriptions for ${vodId}`)
             case '/admin/download': return start('download', 'Starting download..')
