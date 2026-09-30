@@ -8,7 +8,7 @@ import { toClock, type ChatMessage, type ChatSource, type ChatSources, type Emot
 import { computed, nextTick, ref, shallowRef, watch } from 'vue'
 import ChatEmote from './ChatEmote.vue'
 import EmoteMenu from './EmoteMenu.vue'
-import { chatName, DELAY_LIMIT, WIDTH_MAX, WIDTH_MIN, type ChatSettings } from '@/composables/useChatSettings'
+import { chatName, DELAY_LIMIT, WIDTH_DEFAULT, WIDTH_MAX, WIDTH_MIN, type ChatSettings } from '@/composables/useChatSettings'
 
 const props = defineProps<{
   messages: ChatMessage[]
@@ -53,27 +53,39 @@ const colorOpts = [
   { value: 'readable' as const, label: 'readable' },
   { value: 'raw' as const, label: 'exact' },
 ]
-const nameOpts = [
-  { value: 'display' as const, label: 'Display name' },
-  { value: 'login' as const, label: 'Username' },
-  { value: 'both' as const, label: 'Both' },
-]
-const SOURCE_LABEL: Record<ChatSource, string> = { replay: 'VOD recording', bot: 'Live recording' }
+const SOURCE_LABEL: Record<ChatSource, string> = { bot: 'Live', replay: 'VOD' }
 const sourceOpts = computed(() =>
-  (['replay', 'bot'] as const).map((value) => ({
-    value,
-    label: SOURCE_LABEL[value],
-    disabled: props.sources?.[value] === 0,
-  })),
+  (['bot', 'replay'] as const).map((value) => {
+    const disabled = props.sources?.[value] === 0
+    return { value, label: SOURCE_LABEL[value], disabled, title: disabled ? `No ${SOURCE_LABEL[value].toLowerCase()} chat for this VOD` : undefined }
+  }),
 )
 /** The switch shows the recording on screen; picking one saves it as the viewer's choice. */
-const source = computed<ChatSource | undefined>({
-  get: () => props.served ?? (props.settings.source === 'auto' ? undefined : props.settings.source),
+const source = computed<ChatSource>({
+  get: () => props.served ?? props.settings.source,
   set: (v) => {
-    if (v) props.settings.source = v
+    props.settings.source = v
   },
 })
 const missing = computed(() => sourceOpts.value.filter((o) => o.disabled).map((o) => o.label))
+/** The VOD recording has no usernames to trust, so it shows display names only (the saved choice stays). */
+const vodChat = computed(() => source.value === 'replay')
+const nameOpts = computed(() =>
+  [
+    { value: 'display' as const, label: 'Display name' },
+    { value: 'login' as const, label: 'Username' },
+    { value: 'both' as const, label: 'Both' },
+  ].map((o) => {
+    const off = vodChat.value && o.value !== 'display'
+    return { ...o, disabled: off, title: off ? 'Live chat only' : undefined }
+  }),
+)
+const names = computed<ChatSettings['names']>({
+  get: () => (vodChat.value ? 'display' : props.settings.names),
+  set: (v) => {
+    props.settings.names = v
+  },
+})
 
 function removedNote(r: Removal): string {
   const what =
@@ -102,14 +114,17 @@ const sizeOpts = [
       </VxChip>
       <VxPopover align="right" width="min(300px, calc(100vw - 24px))" role="dialog">
         <template #trigger="{ toggle, open }">
-          <VxButton size="sm" variant="ghost" icon label="Chat settings" :pressed="open" @click="toggle">⚙</VxButton>
+          <VxButton size="sm" variant="ghost" icon label="Chat settings" class="cog" :pressed="open" @click="toggle">⚙</VxButton>
         </template>
         <div class="settings">
           <div class="vx-eyebrow">Chat settings</div>
           <div class="set col">
-            <span>Chat recording <span class="vx-muted small">Twitch's VOD chat, or doomtp-bot's log of the live chat</span></span>
+            <span>Chat recording</span>
             <VxSegmented v-model="source" :options="sourceOpts" label="Chat recording" />
-            <span v-for="l in missing" :key="l" class="vx-muted small">This VOD has no {{ l.toLowerCase() }}.</span>
+            <span v-for="l in missing" :key="l" class="vx-muted small">No {{ l.toLowerCase() }} chat for this VOD.</span>
+            <span v-if="vodChat" class="warn small" role="note"
+              >VOD chat has less: no subs, raids, redemptions, bits or removed messages, and display names only.</span
+            >
           </div>
           <div class="set col">
             <span>Chat delay <span class="vx-muted small">shift-click for ±1s</span></span>
@@ -121,8 +136,8 @@ const sizeOpts = [
           <div class="set"><label for="chat-ts">Timestamps</label><VxSwitch id="chat-ts" v-model="settings.timestamps" /></div>
           <div class="set"><label for="chat-badges">Badges</label><VxSwitch id="chat-badges" v-model="settings.badges" /></div>
           <div class="set col">
-            <span>Names <span class="vx-muted small">usernames aren't known for every VOD-recording chatter</span></span>
-            <VxSegmented v-model="settings.names" :options="nameOpts" label="Names" />
+            <span>Names</span>
+            <VxSegmented v-model="names" :options="nameOpts" label="Names" />
           </div>
           <div class="set col">
             <span>Name colours <span class="vx-muted small">as chosen by each chatter</span></span>
@@ -136,11 +151,11 @@ const sizeOpts = [
           </div>
           <div class="set"><span>Text size</span><VxSegmented v-model="settings.size" :options="sizeOpts" label="Text size" /></div>
           <div class="set col">
-            <span>Chat width <span class="vx-muted small">share of the page beside the video; on phones chat sits below</span></span>
+            <span>Chat width <span class="vx-muted small">on phones chat sits below</span></span>
             <span class="row wide">
-              <VxSlider v-model="settings.width" :min="WIDTH_MIN" :max="WIDTH_MAX" label="Chat width in percent of the page" class="grow" />
-              <span class="vx-mono small pct">{{ settings.width }}%</span>
-              <VxButton size="sm" variant="ghost" :disabled="settings.width === 26" @click="settings.width = 26">reset</VxButton>
+              <VxSlider v-model="settings.width" :min="WIDTH_MIN" :max="WIDTH_MAX" :step="10" label="Chat width in pixels" class="grow" />
+              <span class="vx-mono small pct">{{ settings.width }}px</span>
+              <VxButton size="sm" variant="ghost" :disabled="settings.width === WIDTH_DEFAULT" @click="settings.width = WIDTH_DEFAULT">reset</VxButton>
             </span>
           </div>
         </div>
@@ -201,8 +216,10 @@ const sizeOpts = [
 .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .row.wide { width: 100%; flex-wrap: nowrap; }
 .grow { flex: 1; min-width: 0; }
-.pct { width: 3.5ch; text-align: right; }
+.pct { width: 5.5ch; text-align: right; }
 .small { font-size: 11px; }
+.warn { color: var(--vx-warn); line-height: 1.4; }
+.cog { color: var(--vx-ink); font-size: 17px; }
 .lines {
   flex: 1; min-height: 0; overflow-y: auto; padding: 8px 12px; display: flex; flex-direction: column; gap: 3px;
   font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; scrollbar-width: thin; scrollbar-color: var(--vx-line) transparent;

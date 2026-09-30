@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chatName, chatSourceFor } from '@/composables/useChatSettings'
+import { chatName, chatSourceFor, readSaved, WIDTH_DEFAULT } from '@/composables/useChatSettings'
 
 describe('chatSourceFor', () => {
   it('asks for the choice as is until the VOD says which chats it has', () => {
@@ -26,5 +26,26 @@ describe('chatName', () => {
     expect(chatName('Vexoulz', 'vexoulz', 'both')).toEqual({ name: 'Vexoulz', login: null })
     expect(chatName('チャット', null, 'both')).toEqual({ name: 'チャット', login: null })
     expect(chatName('チャット', null, 'login')).toEqual({ name: 'チャット', login: null })
+  })
+})
+
+describe('readSaved', () => {
+  const from = (store: Record<string, unknown>) => (key: string) => (key in store ? JSON.stringify(store[key]) : null)
+
+  it('starts on the live recording at the default pixel width', () => {
+    const s = readSaved(from({}))
+    expect(s.source).toBe('bot')
+    expect(s.width).toBe(WIDTH_DEFAULT)
+  })
+
+  it("keeps older saves' choices but not their percentage width", () => {
+    const s = readSaved(from({ 'vods.chat.v2': { width: 30, source: 'replay', names: 'both', timestamps: true } }))
+    expect(s).toMatchObject({ width: WIDTH_DEFAULT, source: 'replay', names: 'both', timestamps: true })
+    expect(readSaved(from({ 'vods.chat.v2': { source: 'auto' } })).source).toBe('bot')
+  })
+
+  it('keeps and clamps a pixel width', () => {
+    expect(readSaved(from({ 'vods.chat.v3': { width: 500 } })).width).toBe(500)
+    expect(readSaved(from({ 'vods.chat.v3': { width: 5000 } })).width).toBe(720)
   })
 })
