@@ -8,6 +8,8 @@ import { createApp, watch } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 
 import App from './App.vue'
+import { answerOf, recall, remember, shouldCheck } from './admin/quiet'
+import { ensure, quietLoginUrl, session, setExpiredHandler, twitchLoginUrl } from './admin/session'
 import { account } from './lib/account'
 import { vodsConfig } from './vods.config'
 
@@ -24,36 +26,72 @@ const router = createRouter({
     { path: '/live/:id', component: WatchPage, props: (r) => ({ id: r.params.id, type: 'live' }) },
     { path: '/youtube/:id', component: WatchPage, props: (r) => ({ id: r.params.id, type: null }) },
     { path: '/games/:id', component: () => import('./pages/GamesPage.vue'), props: true },
-    // Admin (not in the public nav). Every page but the login needs a session; see src/admin/session.ts.
-    { path: '/admin/login', component: () => import('./pages/admin/AdminLoginPage.vue'), meta: { public: true } },
-    { path: '/admin', component: () => import('./pages/admin/AdminOverviewPage.vue') },
-    { path: '/admin/jobs', component: () => import('./pages/admin/AdminJobsPage.vue') },
-    { path: '/admin/jobs/:id(\\d+)', component: () => import('./pages/admin/AdminJobPage.vue'), props: true },
-    { path: '/admin/vods', component: () => import('./pages/admin/AdminVodsPage.vue') },
-    { path: '/admin/vods/:id', component: () => import('./pages/admin/AdminVodPage.vue'), props: true },
-    { path: '/admin/audit', component: () => import('./pages/admin/AdminAuditPage.vue') },
+    // Manage: the archive's admin pages. Every page but the login needs a dashboard session; see src/admin/session.ts.
+    { path: '/manage/login', component: () => import('./pages/admin/AdminLoginPage.vue'), meta: { public: true } },
+    { path: '/manage', component: () => import('./pages/admin/AdminOverviewPage.vue') },
+    { path: '/manage/jobs', component: () => import('./pages/admin/AdminJobsPage.vue') },
+    { path: '/manage/jobs/:id(\\d+)', component: () => import('./pages/admin/AdminJobPage.vue'), props: true },
+    { path: '/manage/vods', component: () => import('./pages/admin/AdminVodsPage.vue') },
+    { path: '/manage/vods/:id', component: () => import('./pages/admin/AdminVodPage.vue'), props: true },
+    { path: '/manage/audit', component: () => import('./pages/admin/AdminAuditPage.vue') },
+    // The old admin URLs, for bookmarks and the worker's sign-in errors (it sends those to /admin/login).
+    { path: '/admin/:rest(.*)*', redirect: (to) => ({ path: `/manage${to.path.slice('/admin'.length)}`, query: to.query, hash: to.hash }) },
     { path: '/:pathMatch(.*)*', component: () => import('./pages/NotFoundPage.vue') },
   ],
   scrollBehavior: (to, from, saved) => saved ?? (to.path !== from.path ? { top: 0 } : undefined),
 })
 
-// The admin session (and the admin client behind it) loads with the first admin page, not for every visitor.
-let sessionModule: Promise<typeof import('./admin/session')> | undefined
-const loadSession = () =>
-  (sessionModule ??= import('./admin/session').then((m) => {
-    m.setExpiredHandler(() => {
-      const here = router.currentRoute.value
-      if (here.path.startsWith('/admin') && !here.meta.public) router.push({ path: '/admin/login', query: { next: here.fullPath } })
-    })
-    return m
-  }))
-
-router.beforeEach(async (to) => {
-  if (!to.path.startsWith('/admin') || to.meta.public) return true
-  const { ensure, session } = await loadSession()
-  await ensure()
-  return session.authenticated || { path: '/admin/login', query: { next: to.fullPath } }
+// A dashboard session that ends mid-use: an admin still signed in to the account gets a new one quietly (one trip,
+// src/admin/quiet.ts); anyone else goes to the sign-in page, which says why.
+setExpiredHandler(() => {
+  const here = router.currentRoute.value
+  const user = account.user.value
+  if (user && recall(user.id) === 'yes' && shouldCheck(user.id)) return window.location.assign(quietLoginUrl(here.fullPath))
+  if (here.path.startsWith('/manage') && !here.meta.public) router.push({ path: '/manage/login', query: { next: here.fullPath } })
 })
+
+// Manage pages need a dashboard session. Without one, the visitor goes through the worker's Twitch sign-in (which
+// signs in to the account on the way) and comes back to the page; with that off, or after a session ended, to the
+// sign-in page.
+router.beforeEach(async (to) => {
+  if (!to.path.startsWith('/manage') || to.meta.public) return true
+  await ensure()
+  if (session.authenticated) return true
+  if (session.twitchLogin && !session.notice) {
+    window.location.assign(twitchLoginUrl(to.fullPath))
+    return false
+  }
+  return { path: '/manage/login', query: { next: to.fullPath } }
+})
+
+// Signed in to the account: read the quiet check's answer off the URL, and ask once if this browser doesn't know
+// whether the account is one of the archive's admins. A known viewer never loads the dashboard session.
+void router.isReady().then(() =>
+  watch(
+    () => [account.user.value, account.ready.value, router.currentRoute.value.query.admin] as const,
+    async ([user, ready]) => {
+      if (!ready) return
+      const here = router.currentRoute.value
+      const answer = answerOf(here.query)
+      if (here.query.admin !== undefined) {
+        const { admin: _a, ...query } = here.query
+        void router.replace({ path: here.path, query, hash: here.hash })
+      }
+      if (!user) return
+      if (answer) remember(user.id, answer)
+      if (recall(user.id) === 'no') return
+      await ensure()
+      if (session.authenticated) {
+        if (session.user?.id === user.id) remember(user.id, 'yes')
+        return
+      }
+      if (!answer && session.twitchLogin && !here.meta.public && shouldCheck(user.id)) {
+        window.location.assign(quietLoginUrl(here.fullPath))
+      }
+    },
+    { immediate: true },
+  ),
+)
 
 // Watch progress follows the signed-in account (vexoulz-auth); signed out it stays in this browser, and signing in
 // moves what this browser has into the account.

@@ -21,10 +21,10 @@ const rows = computed(() => props.jobs.map((j) => ({ ...j, _pos: stepPosition(j)
 <template>
   <VxTable :columns="columns" :rows="rows" row-key="id" manual :empty="empty" label="Jobs">
     <template #cell-id="{ row }">
-      <RouterLink :to="`/admin/jobs/${row.id}`">{{ row.id }}</RouterLink>
+      <RouterLink :to="`/manage/jobs/${row.id}`">{{ row.id }}</RouterLink>
     </template>
     <template #cell-vodId="{ row }">
-      <RouterLink v-if="row.vodId" :to="`/admin/vods/${row.vodId}`">{{ row.vodId }}</RouterLink>
+      <RouterLink v-if="row.vodId" :to="`/manage/vods/${row.vodId}`">{{ row.vodId }}</RouterLink>
       <span v-else class="vx-muted">—</span>
     </template>
     <template #cell-state="{ row }">

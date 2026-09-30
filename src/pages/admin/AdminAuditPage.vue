@@ -1,9 +1,9 @@
 <script setup lang="ts">
-// /admin/audit: every change made through the admin API (dashboard or API key), newest first.
+// /manage/audit: every change made through the admin API (dashboard or API key), newest first.
 import { timeAgo, VxButton, VxCallout, VxChip, VxSkeleton, VxTable, type TableColumn } from '@vexoulz/ui'
 import { computed, onMounted, ref } from 'vue'
 import type { AuditEntry } from '@/admin/api'
-import AdminShell from '@/admin/AdminShell.vue'
+import ManageShell from '@/admin/ManageShell.vue'
 import { stamp } from '@/admin/format'
 import { admin } from '@/admin/session'
 import { usePoll } from '@/admin/usePoll'
@@ -47,18 +47,26 @@ const columns: TableColumn[] = [
 const detailText = (d: unknown) => (d == null || (typeof d === 'object' && !Object.keys(d).length) ? '' : JSON.stringify(d))
 const rows = computed(() => entries.value.map((e) => ({ ...e, detailText: detailText(e.detail) })))
 
+/** Who made the change: the Twitch login when the worker knows it, else how they signed in. */
+function actorLabel(e: AuditEntry): string {
+  if (e.actorLogin) return `@${e.actorLogin}`
+  if (e.actor === 'password') return 'password'
+  if (e.actor === 'api-key') return 'API key'
+  return e.actor.startsWith('twitch:') ? 'Twitch' : e.actor
+}
+
 /** "vod:123" → the VOD's admin page, "job:5" → the job's. */
 function targetLink(target: string | null): string | null {
   const m = /^(vod|job):(.+)$/.exec(target ?? '')
   if (!m) return null
-  return m[1] === 'vod' ? `/admin/vods/${encodeURIComponent(m[2]!)}` : `/admin/jobs/${encodeURIComponent(m[2]!)}`
+  return m[1] === 'vod' ? `/manage/vods/${encodeURIComponent(m[2]!)}` : `/manage/jobs/${encodeURIComponent(m[2]!)}`
 }
 
-onMounted(() => (document.title = 'Audit log · Admin · vods.vexoulz.net'))
+onMounted(() => (document.title = 'Audit log · Manage · vods.vexoulz.net'))
 </script>
 
 <template>
-  <AdminShell title="Audit log">
+  <ManageShell title="Audit log">
     <template #actions>
       <VxButton :loading="loading" @click="refresh">Refresh</VxButton>
     </template>
@@ -70,7 +78,7 @@ onMounted(() => (document.title = 'Audit log · Admin · vods.vexoulz.net'))
     <template v-else-if="data">
       <VxTable :columns="columns" :rows="rows" row-key="id" manual label="Audit log" empty="Nothing changed yet.">
         <template #cell-at="{ row }"><span class="when" :title="stamp(row.at)">{{ timeAgo(row.at) }}</span></template>
-        <template #cell-actor="{ row }"><VxChip :tone="row.actor === 'password' ? 'accent' : 'default'">{{ row.actor === 'password' ? 'dashboard' : 'API key' }}</VxChip></template>
+        <template #cell-actor="{ row }"><VxChip :tone="row.actor === 'api-key' ? 'default' : 'accent'" :title="row.actor">{{ actorLabel(row) }}</VxChip></template>
         <template #cell-target="{ row }">
           <RouterLink v-if="targetLink(row.target)" :to="targetLink(row.target)!">{{ row.target }}</RouterLink>
           <span v-else class="vx-muted">{{ row.target ?? '—' }}</span>
@@ -82,7 +90,7 @@ onMounted(() => (document.title = 'Audit log · Admin · vods.vexoulz.net'))
         <span class="vx-muted vx-mono small">{{ entries.length }} shown</span>
       </div>
     </template>
-  </AdminShell>
+  </ManageShell>
 </template>
 
 <style scoped>

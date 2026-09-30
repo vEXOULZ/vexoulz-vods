@@ -1,9 +1,9 @@
 <script setup lang="ts">
-// /admin/jobs/:id: one job's steps, controls and log. Polls the job every 3 s and appends new events.
+// /manage/jobs/:id: one job's steps, controls and log. Polls the job every 3 s and appends new events.
 import { timeAgo, VxButton, VxCallout, VxCheckbox, VxChip, VxDialog, VxProgress, VxSkeleton, useToast } from '@vexoulz/ui'
 import { computed, onMounted, ref, shallowRef, watch } from 'vue'
 import { AdminApiError, jobActions, type ActionResult, type JobEvent } from '@/admin/api'
-import AdminShell from '@/admin/AdminShell.vue'
+import ManageShell from '@/admin/ManageShell.vue'
 import { stamp, stepStates, STATE_TONE } from '@/admin/format'
 import { admin } from '@/admin/session'
 import { usePoll } from '@/admin/usePoll'
@@ -103,11 +103,11 @@ function onLogScroll() {
 }
 const time = (iso: string) => new Date(iso).toLocaleTimeString()
 
-onMounted(() => (document.title = `Job ${props.id} · Admin · vods.vexoulz.net`))
+onMounted(() => (document.title = `Job ${props.id} · Manage · vods.vexoulz.net`))
 </script>
 
 <template>
-  <AdminShell :title="`Job ${id}`">
+  <ManageShell :title="`Job ${id}`">
     <template v-if="job" #actions>
       <VxButton v-if="actions?.resume" variant="primary" :loading="busy === 'resume'" @click="act('resume', () => admin.resume(jobId))">Resume</VxButton>
       <VxButton v-if="actions?.resume" :loading="busy === 'once'" @click="act('once', () => admin.resume(jobId, true))">Run one step</VxButton>
@@ -116,7 +116,7 @@ onMounted(() => (document.title = `Job ${props.id} · Admin · vods.vexoulz.net`
       <VxButton v-if="actions?.cancel" variant="danger" :loading="busy === 'cancel'" @click="confirmCancel = true">Cancel</VxButton>
     </template>
 
-    <p class="back"><RouterLink to="/admin/jobs">← All jobs</RouterLink></p>
+    <p class="back"><RouterLink to="/manage/jobs">← All jobs</RouterLink></p>
 
     <VxCallout v-if="error && !job" tone="error" title="Couldn't load this job">
       {{ error }}
@@ -134,8 +134,8 @@ onMounted(() => (document.title = `Job ${props.id} · Admin · vods.vexoulz.net`
           <div>
             <dt>VOD</dt>
             <dd class="vx-mono">
-              <RouterLink v-if="job.vodId" :to="`/admin/vods/${job.vodId}`">{{ job.vodId }}</RouterLink><span v-else>—</span>
-              <RouterLink v-if="job.vodId" class="small" :to="`/admin/jobs?vodId=${job.vodId}`"> · its jobs</RouterLink>
+              <RouterLink v-if="job.vodId" :to="`/manage/vods/${job.vodId}`">{{ job.vodId }}</RouterLink><span v-else>—</span>
+              <RouterLink v-if="job.vodId" class="small" :to="`/manage/jobs?vodId=${job.vodId}`"> · its jobs</RouterLink>
             </dd>
           </div>
           <div><dt>Attempts</dt><dd class="vx-mono">{{ job.attempts }}</dd></div>
@@ -204,7 +204,7 @@ onMounted(() => (document.title = `Job ${props.id} · Admin · vods.vexoulz.net`
         <VxButton variant="danger-solid" @click="cancel">Cancel job</VxButton>
       </template>
     </VxDialog>
-  </AdminShell>
+  </ManageShell>
 </template>
 
 <style scoped>

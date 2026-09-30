@@ -34,23 +34,32 @@ VODs with restricted (cut) chapters, where the old `?t=` was upload time.
 The watch page has the same controls on phones and desktops: part picker (with parts YouTube can't play marked,
 plus a panel to skip them), chapters, copy link, Drive download when there is one, theater mode, keyboard
 fullscreen, keyboard shortcuts (`?`), and chat settings (delay in 0.1 s steps, timestamps (off by default), badges,
-name colours, emote sources, text size, chat width beside the video). Chat settings and watch progress are saved in
-this browser; accounts come later.
+name colours, emote sources, text size, chat width beside the video). Chat settings are saved in this browser;
+watch progress follows the account when signed in (see "Signing in").
 
 Thumbnails come from YouTube and box art from Twitch. Emotes load from each provider's own CDN (Twitch, 7TV, BTTV,
 FFZ). The game dropdown comes from the archive's `/v1/games-played` and filters by exact game.
 
-## Admin (`/admin`)
-Archive admin: status overview, the job queue (filter, start, pause/resume/retry/cancel, pause-before steps, live
+## Manage (`/manage`)
+The archive's admin pages: status overview, the job queue (filter, start, pause/resume/retry/cancel, pause-before steps, live
 log), VOD editing (title, chapters with Twitch category search and a lock, YouTube and Drive lists, saved emotes,
 re-fetch / re-upload / delete actions, adding VODs the monitor missed) and the audit log. It talks to twitch-archive's worker admin API at `/backend-admin` on the site's origin (`VITE_ADMIN_API`), with
 a session (HttpOnly cookie + CSRF token) from "Sign in with Twitch" (through vexoulz-auth, for the worker's
 `ARCHIVE_ADMIN_TWITCH_IDS`) or the admin password, which only works from the local network; the browser never holds an
 API key. The contract is in
-[docs/admin-api.md](docs/admin-api.md). Not linked from the public pages.
+[docs/admin-api.md](docs/admin-api.md). The old `/admin/...` URLs redirect to `/manage/...`.
+
+There is one sign-in. An admin signs in from the header's account menu, and a Twitch-purple **Manage** button appears
+in the header (and a "Manage" item in the menu); the Manage bar shows only on the `/manage` pages. Someone signed in
+to the account is checked once per browser, quietly: one trip through the worker's `/admin/signin?quiet=1`, which
+comes straight back with `admin=1` or `admin=0` (`src/admin/quiet.ts`). The answer is kept in `localStorage` as
+`vods-admin:<twitch id>`, so a plain viewer isn't checked again; for an admin, a dashboard session that ends while
+the account is still signed in is renewed the same way. Signing out ends both and forgets the answer. Opening a
+Manage page signed out goes through the worker's Twitch sign-in, which signs in to the account on the way;
+`/manage/login` explains a failed sign-in and keeps the admin password for the local network.
 
 In `npm run dev`, `/backend-admin` is a built-in in-memory mock (`dev/adminMock.ts`, password `admin`, and
-"Sign in with Twitch" signs a fake admin in at once; VODs come
+"Sign in with Twitch" signs a fake admin in at once, as does the quiet check unless `MOCK_ADMIN_QUIET=no`; VODs come
 from the public archive API and edits stay in memory) unless
 `VITE_DEV_ADMIN_TARGET` is set in `.env.local`. The mock is never part of a build. To use the mock while
 `.env.local` names a worker, run `npm run dev -- --mode mock` with `VITE_DEV_ADMIN_TARGET=` (empty) in
@@ -64,6 +73,10 @@ The header's account menu is the shared *.vexoulz.net sign-in (vexoulz-auth, thr
 what this browser saved before is merged into it; signed out, progress stays in the browser. `AUTH_BASE` in
 `src/lib/account.ts` (or `VITE_AUTH_BASE`) is vexoulz-auth's URL, `https://auth.vexoulz.net`; empty turns
 sign-in off.
+
+## Assets still needed
+
+- The Twitch mark on the header's Manage button (`src/components/ManageLink.vue`, a `VxPlaceholder` for now).
 
 ## Config
 
