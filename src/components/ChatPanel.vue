@@ -1,14 +1,25 @@
 <script setup lang="ts">
 // Chat replay beside (or under) the player. Follows the newest line unless you scroll up; then a button takes you
-// back down. Settings (delay, timestamps, badges, name colours, emote sources, size) are the viewer's own.
+// back down. Settings (which recording, delay, timestamps, badges, names, name colours, emote sources, size) are
+// the viewer's own. The live recording (doomtp-bot's) also has notices (subs, raids, redemptions), rewards, bits and
+// removed messages; the VOD recording (Twitch's replay) has none of those.
 import { twitchColor, VxButton, VxChip, VxPopover, VxSegmented, VxSlider, VxStepper, VxSwitch } from '@vexoulz/ui'
-import { toClock, type ChatMessage, type EmoteToken } from '@vexoulz/vods-core'
-import { nextTick, ref, shallowRef, watch } from 'vue'
+import { toClock, type ChatMessage, type ChatSource, type ChatSources, type EmoteToken, type Removal } from '@vexoulz/vods-core'
+import { computed, nextTick, ref, shallowRef, watch } from 'vue'
 import ChatEmote from './ChatEmote.vue'
 import EmoteMenu from './EmoteMenu.vue'
-import { DELAY_LIMIT, WIDTH_MAX, WIDTH_MIN, type ChatSettings } from '@/composables/useChatSettings'
+import { chatName, DELAY_LIMIT, WIDTH_MAX, WIDTH_MIN, type ChatSettings } from '@/composables/useChatSettings'
 
-const props = defineProps<{ messages: ChatMessage[]; settings: ChatSettings; error?: string | null; playing: boolean }>()
+const props = defineProps<{
+  messages: ChatMessage[]
+  settings: ChatSettings
+  error?: string | null
+  playing: boolean
+  /** Messages each recording has for this VOD; null until chat's first page (or from an older archive). */
+  sources?: ChatSources | null
+  /** The recording being shown. */
+  served?: ChatSource | null
+}>()
 const emit = defineEmits<{ hide: [] }>()
 
 const lines = ref<HTMLElement | null>(null)
@@ -42,6 +53,37 @@ const colorOpts = [
   { value: 'readable' as const, label: 'readable' },
   { value: 'raw' as const, label: 'exact' },
 ]
+const nameOpts = [
+  { value: 'display' as const, label: 'Display name' },
+  { value: 'login' as const, label: 'Username' },
+  { value: 'both' as const, label: 'Both' },
+]
+const SOURCE_LABEL: Record<ChatSource, string> = { replay: 'VOD recording', bot: 'Live recording' }
+const sourceOpts = computed(() =>
+  (['replay', 'bot'] as const).map((value) => ({
+    value,
+    label: SOURCE_LABEL[value],
+    disabled: props.sources?.[value] === 0,
+  })),
+)
+/** The switch shows the recording on screen; picking one saves it as the viewer's choice. */
+const source = computed<ChatSource | undefined>({
+  get: () => props.served ?? (props.settings.source === 'auto' ? undefined : props.settings.source),
+  set: (v) => {
+    if (v) props.settings.source = v
+  },
+})
+const missing = computed(() => sourceOpts.value.filter((o) => o.disabled).map((o) => o.label))
+
+function removedNote(r: Removal): string {
+  const what =
+    r.type === 'timeout' ? `Timed out${r.seconds ? ` for ${r.seconds}s` : ''}`
+    : r.type === 'ban' ? 'Banned'
+    : r.type === 'delete' ? 'Deleted by a moderator'
+    : 'Cleared by a moderator'
+  return r.reason ? `${what}: ${r.reason}` : what
+}
+
 const sizeOpts = [
   { value: 's' as const, label: 'S' },
   { value: 'm' as const, label: 'M' },
@@ -65,6 +107,11 @@ const sizeOpts = [
         <div class="settings">
           <div class="vx-eyebrow">Chat settings</div>
           <div class="set col">
+            <span>Chat recording <span class="vx-muted small">Twitch's VOD chat, or doomtp-bot's log of the live chat</span></span>
+            <VxSegmented v-model="source" :options="sourceOpts" label="Chat recording" />
+            <span v-for="l in missing" :key="l" class="vx-muted small">This VOD has no {{ l.toLowerCase() }}.</span>
+          </div>
+          <div class="set col">
             <span>Chat delay <span class="vx-muted small">shift-click for ±1s</span></span>
             <span class="row">
               <VxStepper v-model="settings.delay" :step="0.1" :min="-DELAY_LIMIT" :max="DELAY_LIMIT" size="sm" unit="s" label="Chat delay in seconds" />
@@ -73,6 +120,10 @@ const sizeOpts = [
           </div>
           <div class="set"><label for="chat-ts">Timestamps</label><VxSwitch id="chat-ts" v-model="settings.timestamps" /></div>
           <div class="set"><label for="chat-badges">Badges</label><VxSwitch id="chat-badges" v-model="settings.badges" /></div>
+          <div class="set col">
+            <span>Names <span class="vx-muted small">usernames aren't known for every VOD-recording chatter</span></span>
+            <VxSegmented v-model="settings.names" :options="nameOpts" label="Names" />
+          </div>
           <div class="set col">
             <span>Name colours <span class="vx-muted small">as chosen by each chatter</span></span>
             <VxSegmented v-model="settings.colors" :options="colorOpts" label="Name colours" />
@@ -99,22 +150,40 @@ const sizeOpts = [
     <div ref="lines" class="lines" aria-live="off" @scroll.passive="onScroll">
       <p v-if="error" class="note vx-muted">Chat couldn't load: {{ error }}</p>
       <p v-else-if="!messages.length" class="note vx-muted">{{ playing ? 'No chat here yet.' : 'Chat plays along with the video.' }}</p>
-      <div v-for="m in messages" :key="m.id" class="line">
+      <div
+        v-for="m in messages"
+        :key="m.id"
+        class="line"
+        :class="{ notice: m.kind === 'notice', removed: m.removed }"
+
+      >
         <span v-if="settings.timestamps" class="ts vx-mono">{{ toClock(m.at) }}</span>
-        <span v-if="settings.badges && m.badges.length" class="badges">
-          <img v-for="b in m.badges" :key="b.setId" :src="b.src" :srcset="b.srcset" :alt="b.title" :title="b.title" width="18" height="18" loading="lazy" />
-        </span>
-        <span class="who" :style="{ color: twitchColor(m.user, m.color, settings.colors) }">{{ m.user }}</span>
-        <template v-for="(t, j) in m.tokens" :key="j">
-          <ChatEmote
-            v-if="t.kind === 'emote'"
-            :token="t"
-            :enabled="settings.emotes"
-            :open="menu?.token === t"
-            @menu="toggleMenu(t, $event)"
-          />
-          <span v-else>{{ t.text }}</span>
+        <template v-if="m.kind === 'message'">
+          <span v-if="m.reward" class="reward">{{ m.reward.title }}<template v-if="m.reward.cost"> · {{ m.reward.cost }}</template></span>
+          <span v-if="settings.badges && m.badges.length" class="badges">
+            <img v-for="b in m.badges" :key="b.setId" :src="b.src" :srcset="b.srcset" :alt="b.title" :title="b.title" width="18" height="18" loading="lazy" />
+          </span>
+          <span class="who" :class="{ me: m.action }" :style="{ color: twitchColor(m.user, m.color, settings.colors) }"
+            >{{ chatName(m.user, m.login, settings.names).name
+            }}<span v-if="chatName(m.user, m.login, settings.names).login" class="login">
+              ({{ chatName(m.user, m.login, settings.names).login }})</span
+            ></span
+          >
+          <span v-if="m.bits" class="bits vx-mono">{{ m.bits }} bits</span>
         </template>
+        <span class="text" :class="{ me: m.action }" :style="m.action ? { color: twitchColor(m.user, m.color, settings.colors) } : undefined">
+          <template v-for="(t, j) in m.tokens" :key="j">
+            <ChatEmote
+              v-if="t.kind === 'emote'"
+              :token="t"
+              :enabled="settings.emotes"
+              :open="menu?.token === t"
+              @menu="toggleMenu(t, $event)"
+            />
+            <span v-else>{{ t.text }}</span>
+          </template>
+        </span>
+        <span v-if="m.removed" class="why vx-muted small">{{ removedNote(m.removed) }}</span>
       </div>
     </div>
     <EmoteMenu v-if="menu" :token="menu.token" :anchor="menu.anchor" :enabled="settings.emotes" @close="menu = null" />
@@ -146,5 +215,15 @@ const sizeOpts = [
 .badges img { width: 18px; height: 18px; }
 .who { font-weight: 700; }
 .who::after { content: ':'; color: var(--vx-muted); margin-right: 5px; }
+.who.me::after { content: ''; }
+.login { font-weight: 400; color: var(--vx-muted); }
+.text.me { font-style: italic; }
+.reward, .bits {
+  display: inline-block; margin-right: 5px; padding: 0 5px; border-radius: 4px; font-size: 0.85em; line-height: 1.5;
+  background: color-mix(in srgb, var(--vx-accent) 18%, transparent); color: var(--vx-ink);
+}
+.notice { padding: 2px 8px; border-left: 2px solid var(--vx-accent); background: color-mix(in srgb, var(--vx-accent) 8%, transparent); color: var(--vx-muted); }
+.removed .text { text-decoration: line-through; opacity: 0.55; }
+.why { margin-left: 6px; font-style: italic; }
 .jump { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); }
 </style>

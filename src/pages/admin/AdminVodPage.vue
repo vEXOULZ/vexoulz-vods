@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // /admin/vods/:id: fix one VOD by hand (title, chapters, YouTube and Drive lists, emotes) and run its jobs.
-import { VxButton, VxCallout, VxChip, VxInput, VxSkeleton, useToast } from '@vexoulz/ui'
+import { timeAgo, VxButton, VxCallout, VxChip, VxInput, VxSkeleton, useToast } from '@vexoulz/ui'
 import { toClock, toSeconds } from '@vexoulz/vods-core'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -44,6 +44,12 @@ const { data: jobPage, refresh: refreshJobs } = usePoll((signal) => admin.jobs({
 const jobs = computed(() => jobPage.value?.data ?? vod.value?.jobs ?? [])
 const activeJobs = computed(() => jobs.value.filter((j) => j.state === 'running' || j.state === 'queued' || j.state === 'paused').length)
 
+/** The spans doomtp-bot wasn't listening, as text. */
+const botGaps = computed(() =>
+  (vod.value?.botChat?.coverage?.gaps ?? []).map(
+    (g) => `${stamp(new Date(g.from).toISOString())} → ${stamp(new Date(g.to).toISOString())}${g.reason ? ` (${g.reason})` : ''}`,
+  ),
+)
 const duration = computed(() => {
   const v = vod.value
   if (!v) return 0
@@ -111,6 +117,15 @@ onMounted(() => (document.title = `VOD ${props.id} · Admin · vods.vexoulz.net`
           <div v-if="vod.stream_id"><dt>Stream</dt><dd class="vx-mono">{{ vod.stream_id }}</dd></div>
           <div><dt>Parts</dt><dd>{{ vod.youtube?.length ?? 0 }} YouTube · {{ vod.drive?.length ?? 0 }} Drive</dd></div>
           <div><dt>Chapters</dt><dd>{{ vod.chapters?.length ?? 0 }} <VxChip v-if="vod.chaptersLocked" tone="warn">locked</VxChip></dd></div>
+          <div>
+            <dt>Bot chat</dt>
+            <dd v-if="vod.botChat" :title="`read ${stamp(vod.botChat.fetched_at)}`">
+              {{ vod.botChat.rows ?? '?' }} messages · read {{ timeAgo(vod.botChat.fetched_at) }}
+              <VxChip :tone="vod.botChat.keyed ? 'ok' : 'default'" :title="vod.botChat.keyed ? 'Read with a key: removals and their reasons are in' : 'Public read: no removals'">{{ vod.botChat.keyed ? 'keyed' : 'public' }}</VxChip>
+              <VxChip v-if="botGaps.length" tone="warn" :title="botGaps.join('\n')">{{ botGaps.length }} {{ botGaps.length === 1 ? 'gap' : 'gaps' }}</VxChip>
+            </dd>
+            <dd v-else class="vx-muted">not read</dd>
+          </div>
         </dl>
       </section>
 

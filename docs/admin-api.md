@@ -81,7 +81,10 @@ The existing `Authorization: Bearer <admin api key>` keeps working for scripts. 
 ## 4. VODs — new (the existing `/admin/delete`, `/admin/chapters`, `/admin/emotes`, ... stay)
 
 - `GET /admin/vods/{id}` → the full VOD row as the public API serializes it, plus
-  `{"chaptersLocked": bool, "jobs": [recent job objects for this VOD]}`.
+  `{"chaptersLocked": bool, "botChat": {...} | null, "jobs": [recent job objects for this VOD]}`. `botChat` is what
+  the last `bot_chat` job read from doomtp-bot's log: `fetched_at`, `since`/`until`, `keyed` (read with a key, so
+  removals are in), `rows`, and `coverage.gaps` (`[{from, to, reason}]`, ms since the epoch); null before one ran
+  (twitch-archive PR #26).
 - `PATCH /admin/vods/{id}` `{"title"?: string}` → the updated VOD.
 - `PUT /admin/vods/{id}/chapters` `{"chapters": [{"name", "gameId", "imageTemplate"?, "start", "length",
   "restricted", "kind"?}], "locked": bool}` → the updated VOD. `kind: "gap"` keeps a merge's gap chapter one. Validate: sorted by start, no overlaps, inside the VOD's
@@ -92,6 +95,10 @@ The existing `Authorization: Bearer <admin api key>` keeps working for scripts. 
 - `GET /admin/twitch/games?query=` → `[{"gameId", "name", "imageTemplate"}]` (Helix category search), for the
   chapter editor.
 - `GET /admin/vods/{id}/emotes` → the saved emote row (or `null`).
+- `POST /admin/bot-chat` `{"vodId"}` → starts a `bot_chat` job: reads the VOD's chat from doomtp-bot's `/log` into
+  `bot_logs` (adds or updates rows only). 409 while one runs for that VOD or when the VOD was merged or split; 500 when
+  the archive has no doomtp URL set. `POST /admin/bot-chat/backfill` `{"vodIds"?}` → a `bot_chat_backfill` job for
+  every VOD without bot chat (or only those), skipping merged or split ones (twitch-archive PR #24).
 - After any VOD edit, the public API must serve the change right away (invalidate its cached responses for that VOD,
   and lists that include it).
 

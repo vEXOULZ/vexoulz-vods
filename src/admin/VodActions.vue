@@ -83,6 +83,7 @@ function remove() {
         <VxButton :disabled="spliced" :title="spliced ? TWITCH_OFF : undefined" :loading="busy === 'chapters'" @click="run('chapters', () => admin.refetchChapters(vod.id, forceChapters))">Re-fetch chapters from Twitch</VxButton>
         <VxCheckbox v-if="vod.chaptersLocked && !spliced" v-model="forceChapters" class="small">replace hand edits (locked)</VxCheckbox>
         <VxButton :disabled="spliced" :title="spliced ? TWITCH_OFF : undefined" :loading="busy === 'chat'" @click="run('chat', () => admin.saveChat(vod.id))">Save chat again</VxButton>
+        <VxButton :disabled="spliced" :title="spliced ? TWITCH_OFF : 'Read this VOD’s chat from doomtp-bot’s log (the live recording)'" :loading="busy === 'botChat'" @click="run('botChat', () => admin.botChat(vod.id), () => emit('changed'))">Read bot chat</VxButton>
         <VxButton :disabled="spliced" :title="spliced ? TWITCH_OFF : undefined" :loading="busy === 'duration'" @click="run('duration', () => admin.refreshDuration(vod.id), () => emit('changed'))">Refresh duration</VxButton>
       </div>
     </div>

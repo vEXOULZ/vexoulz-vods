@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { timeAgo, VxButton, VxCallout, VxChip, VxSkeleton, VxStatusDot, useToast } from '@vexoulz/ui'
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { JOB_STATES } from '@/admin/api'
 import AdminShell from '@/admin/AdminShell.vue'
 import JobsTable from '@/admin/JobsTable.vue'
@@ -43,6 +44,22 @@ const tiles = computed(() => {
   ]
 })
 
+const router = useRouter()
+const backfilling = ref(false)
+/** Bot chat for every VOD that has none yet. */
+async function backfillBotChat() {
+  backfilling.value = true
+  try {
+    const res = await admin.botChatBackfill()
+    toast.show(res.msg, { duration: 3500 })
+    if (res.jobId != null) void router.push(`/admin/jobs/${res.jobId}`)
+  } catch (e) {
+    toast.show(`Couldn't start the bot chat backfill: ${errorMessage(e)}`, { kind: 'error', duration: 5000 })
+  } finally {
+    backfilling.value = false
+  }
+}
+
 async function connectYoutube() {
   try {
     const { url } = await admin.youtubeAuthUrl()
@@ -57,6 +74,7 @@ async function connectYoutube() {
   <AdminShell title="Overview">
     <template #actions>
       <VxButton :loading="loading" @click="refresh">Refresh</VxButton>
+      <VxButton :loading="backfilling" title="Read doomtp-bot’s chat for every VOD that doesn’t have it yet" @click="backfillBotChat">Backfill bot chat</VxButton>
       <VxButton variant="primary" to="/admin/jobs?new=1">Start a job</VxButton>
     </template>
 

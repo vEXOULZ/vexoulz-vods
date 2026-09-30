@@ -2,6 +2,7 @@
 // site data); the page then just starts from the defaults.
 import { reactive, watch } from 'vue'
 import { clamp } from '@vexoulz/ui'
+import type { ChatSource, ChatSources } from '@vexoulz/vods-core'
 
 export interface ChatSettings {
   /** Seconds; positive shows chat later. */
@@ -15,6 +16,10 @@ export interface ChatSettings {
   /** Share of the page width the chat takes beside the video, in percent (wide layouts; on phones chat sits below). */
   width: number
   open: boolean
+  /** Which chat to replay: Twitch's VOD recording, doomtp-bot's live recording, or the archive's pick. */
+  source: ChatSource | 'auto'
+  /** How chatters are named: display name, username, or both (`Name (username)`). */
+  names: 'display' | 'login' | 'both'
 }
 
 const KEY = 'vods.chat.v2'
@@ -33,7 +38,26 @@ export const defaultChatSettings = (): ChatSettings => ({
   size: 'm',
   width: 26,
   open: true,
+  source: 'auto',
+  names: 'display',
 })
+
+/**
+ * The chat to ask for: the viewer's choice, unless this VOD has none of it and has the other one (then the other).
+ * `sources` is unknown (null) until the first page is in; the choice is asked for as is until then.
+ */
+export function chatSourceFor(pref: ChatSettings['source'], sources: ChatSources | null): ChatSource | 'auto' {
+  if (pref === 'auto' || !sources) return pref
+  const other: ChatSource = pref === 'bot' ? 'replay' : 'bot'
+  return sources[pref] === 0 && sources[other] > 0 ? other : pref
+}
+
+/** The name to show for a chatter; the username is left out when unknown or only differs from the name in case. */
+export function chatName(user: string, login: string | null, mode: ChatSettings['names']): { name: string; login: string | null } {
+  if (mode === 'login') return { name: login ?? user, login: null }
+  if (mode === 'both' && login && login !== user.toLowerCase()) return { name: user, login }
+  return { name: user, login: null }
+}
 
 function load(): ChatSettings {
   const base = defaultChatSettings()
@@ -59,6 +83,8 @@ function load(): ChatSettings {
           ? clamp(Math.round(saved.width), WIDTH_MIN, WIDTH_MAX)
           : base.width,
       open: typeof saved.open === 'boolean' ? saved.open : base.open,
+      source: saved.source === 'replay' || saved.source === 'bot' ? saved.source : base.source,
+      names: saved.names === 'login' || saved.names === 'both' ? saved.names : base.names,
     }
   } catch {
     return base
