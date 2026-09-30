@@ -5,8 +5,16 @@ import {
   chapterEdits,
   chapterErrors,
   chapterGaps,
+  detailsDraft,
+  detailsErrors,
+  detailsPatch,
   driveId,
   formatTime,
+  gameDrafts,
+  gameEdits,
+  gameErrors,
+  gamesFromChapters,
+  hhmmss,
   parseTime,
   templateOf,
   youtubeDrafts,
@@ -14,6 +22,8 @@ import {
   youtubeErrors,
   youtubeId,
 } from '@/admin/edits'
+import { fromDraft, settingChanges, showValue, toDraft } from '@/admin/settings'
+import type { AdminVod, RuntimeSetting } from '@/admin/api'
 
 const raw = (over: Partial<RawChapter>): RawChapter => ({ name: 'Game', gameId: '1', start: 0, end: 100, ...over })
 
@@ -102,5 +112,99 @@ describe('uploads', () => {
     rows[2]!.type = 'vod'
     rows[2]!.part = 2
     expect([...youtubeErrors(rows).values()]).toEqual(['There is already a vod part 2.'])
+  })
+})
+
+const vod = (over: Partial<AdminVod> = {}): AdminVod =>
+  ({ id: '1', title: 'Old', thumbnail_url: null, duration: '01:00:00', duration_seconds: 3600, createdAt: '2026-09-01T20:00:00.000Z', chapters: [], ...over }) as AdminVod
+
+describe('details draft', () => {
+  it('sends only what changed, with the default thumbnail as null and the duration as HH:MM:SS', () => {
+    const v = vod({ thumbnail_url: 'https://x/t.jpg' })
+    const d = detailsDraft(v)
+    expect(detailsPatch(d, v)).toEqual({})
+    d.title = '  New  '
+    d.thumbnailUrl = ''
+    d.duration = 3725
+    expect(detailsPatch(d, v)).toEqual({ title: 'New', thumbnailUrl: null, duration: '01:02:05' })
+  })
+
+  it('checks the title, URL, duration against the content, and the date', () => {
+    const d = { ...detailsDraft(vod()), title: ' ', thumbnailUrl: 'ftp://x', createdAt: 'nope' }
+    expect([...detailsErrors(d).keys()]).toEqual(['title', 'thumbnailUrl', 'createdAt'])
+    expect(detailsErrors(detailsDraft(vod()), 4000).get('duration')).toMatch(/shorten/)
+    expect(hhmmss(100 * 3600 + 1)).toBe('100:00:01')
+  })
+})
+
+describe('games draft', () => {
+  const row = { start_time: '60', end_time: 120, game_id: '9', game_name: 'Doom', chapter_image: 'https://img/box-40x53.jpg', video_id: 'yt' }
+
+  it('round-trips a row, keeping its box art and other fields, sorted by start', () => {
+    const drafts = gameDrafts([row, { ...row, start_time: 0, end_time: 60, game_name: 'Quake', chapter_image: undefined }])
+    const out = gameEdits(drafts)
+    expect(out.map((r) => r.game_name)).toEqual(['Quake', 'Doom'])
+    expect(out[1]).toMatchObject({ start_time: 60, end_time: 120, chapter_image: row.chapter_image, video_id: 'yt' })
+  })
+
+  it('flags a missing game, a backwards row, overlap and running past the VOD', () => {
+    const [a, b, c, d] = gameDrafts([
+      { ...row, start_time: 0, end_time: 100 },
+      { ...row, start_time: 50, end_time: 150 },
+      { ...row, start_time: 200, end_time: 190 },
+      { ...row, start_time: 300, end_time: 5000, game_name: '' },
+    ])
+    const errors = gameErrors([a!, b!, c!, d!], 3600)
+    expect(errors.has(a!.key)).toBe(false)
+    expect(errors.get(b!.key)).toMatch(/Overlaps/)
+    expect(errors.get(c!.key)).toMatch(/after the start/)
+    expect(errors.get(d!.key)).toBe('Pick a game.')
+    const [e] = gameDrafts([{ ...row, start_time: 0, end_time: 5000 }])
+    expect(gameErrors([e!], 3600).get(e!.key)).toMatch(/Ends after/)
+  })
+
+  it('copy from chapters leaves out cut chapters', () => {
+    const rows = gamesFromChapters([raw({ name: 'A', start: 0, end: 100 }), raw({ name: 'B', start: 100, end: 50, restricted: true })])
+    expect(rows.map((r) => [r.name, r.start, r.end])).toEqual([['A', 0, 100]])
+  })
+})
+
+describe('settings drafts', () => {
+  const setting = (over: Partial<RuntimeSetting>): RuntimeSetting => ({
+    key: 'k', value: '', default: '', overridden: false, type: 'text', group: 'Runner', applies: 'now', help: '',
+    min: null, max: null, updatedAt: null, updatedBy: null, ...over,
+  })
+
+  it('checks numbers against the range, and whole numbers for ints', () => {
+    const s = setting({ type: 'int', value: 2, min: 1, max: 8 })
+    expect(fromDraft(s, '0')).toEqual({ error: 'At least 1.' })
+    expect(fromDraft(s, '9')).toEqual({ error: 'At most 8.' })
+    expect(fromDraft(s, '1.5')).toEqual({ error: 'A whole number.' })
+    expect(fromDraft(s, '')).toEqual({ error: 'A number.' })
+    expect(fromDraft(s, ' 4 ')).toEqual({ value: 4 })
+  })
+
+  it('reads lists one per line, and keeps steps in the job order', () => {
+    expect(fromDraft(setting({ type: 'list' }), 'a\n\n b \na')).toEqual({ value: ['a', 'b'] })
+    const steps = setting({ type: 'steps', choices: { vod: ['download', 'upload', 'cleanup'] } })
+    expect(fromDraft(steps, { vod: ['cleanup', 'download'], live: [] })).toEqual({ value: { vod: ['download', 'cleanup'] } })
+  })
+
+  it('sends only changed settings, and none with errors', () => {
+    const items = [
+      setting({ key: 'on', type: 'bool', value: true }),
+      setting({ key: 'n', type: 'int', value: 2, min: 1 }),
+      setting({ key: 'l', type: 'list', value: ['x'] }),
+    ]
+    const drafts = Object.fromEntries(items.map((s) => [s.key, toDraft(s)]))
+    expect(settingChanges(items, drafts)).toEqual({ changes: {}, errors: new Map() })
+    drafts.on = false
+    drafts.n = '0'
+    drafts.l = 'x\ny'
+    const r = settingChanges(items, drafts)
+    expect(r.changes).toEqual({ on: false, l: ['x', 'y'] })
+    expect([...r.errors.keys()]).toEqual(['n'])
+    expect(showValue(items[0]!, false)).toBe('off')
+    expect(showValue(items[2]!, [])).toBe('none')
   })
 })

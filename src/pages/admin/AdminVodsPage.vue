@@ -1,10 +1,11 @@
 <script setup lang="ts">
-// /manage/vods?q=: find a VOD to edit (title search on the public API, or open an id), and add ones the monitor missed.
-import { VxButton, VxCallout, VxChip, VxDialog, VxField, VxInput, VxSkeleton, VxTable, useToast, type TableColumn } from '@vexoulz/ui'
+// /manage/vods?q=&hidden=: find a VOD to edit (GET /admin/vods, so hidden and merged ones too; a title or an id), and
+// add ones the monitor missed.
+import { VxButton, VxCallout, VxChip, VxDialog, VxField, VxInput, VxSegmented, VxSkeleton, VxTable, useToast, type Option, type TableColumn } from '@vexoulz/ui'
 import { toClock } from '@vexoulz/vods-core'
-import { useVods } from '@vexoulz/vods-core/vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import type { AdminVodRow } from '@/admin/api'
 import ManageShell from '@/admin/ManageShell.vue'
 import { admin } from '@/admin/session'
 import { errorMessage } from '@/lib/errors'
@@ -15,36 +16,63 @@ const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 
+type Shown = 'all' | 'shown' | 'hidden'
+const SHOWN: Option<Shown>[] = [
+  { value: 'all', label: 'All' },
+  { value: 'shown', label: 'Public' },
+  { value: 'hidden', label: 'Hidden' },
+]
+
 const query = computed(() => (typeof route.query.q === 'string' ? route.query.q : ''))
+const shown = computed<Shown>(() => (route.query.hidden === 'true' ? 'hidden' : route.query.hidden === 'false' ? 'shown' : 'all'))
 const draft = ref(query.value)
-watchDebounced(draft, (v) => router.replace({ query: v.trim() ? { q: v.trim() } : {} }), 300)
+const setQuery = (q: string, s: Shown) =>
+  router.replace({ query: { ...(q ? { q } : {}), ...(s !== 'all' ? { hidden: String(s === 'hidden') } : {}) } })
+watchDebounced(draft, (v) => setQuery(v.trim(), shown.value), 300)
+const setShown = (s: Shown | undefined) => setQuery(query.value, s ?? 'all')
 
 const idLike = computed(() => /^\d{6,}$/.test(query.value) ? query.value : null)
 
-const page = ref(1)
-watch(query, () => (page.value = 1))
-const { vods, total, loading, error, refresh } = useVods(
-  // A bare id opens that VOD's row even if the title doesn't contain it.
-  () => ({ title: idLike.value ? undefined : query.value, page: page.value, perPage: PER_PAGE }),
-  { append: true },
-)
-const more = () => page.value++
+const vods = ref<AdminVodRow[]>([])
+const next = ref<string | null>(null)
+const loading = ref(false)
+const error = ref<unknown>(null)
+let ctrl: AbortController | null = null
+/** The first page again (`more` = the page after the last one). */
+async function load(more = false) {
+  ctrl?.abort()
+  const mine = (ctrl = new AbortController())
+  loading.value = true
+  error.value = null
+  try {
+    const hidden = shown.value === 'all' ? undefined : shown.value === 'hidden'
+    const page = await admin.vods({ q: query.value || undefined, hidden, limit: PER_PAGE, before: more ? next.value ?? undefined : undefined }, mine.signal)
+    vods.value = more ? [...vods.value, ...page.data] : page.data
+    next.value = page.next
+  } catch (e) {
+    if (!mine.signal.aborted) error.value = e
+  } finally {
+    if (ctrl === mine) loading.value = false
+  }
+}
+watch([query, shown], () => load(), { immediate: true })
+const refresh = () => load()
+const more = () => load(true)
 
 const columns: TableColumn[] = [
   { key: 'id', label: 'Id', mono: true },
   { key: 'title', label: 'Title' },
   { key: 'date', label: 'Streamed', muted: true },
   { key: 'length', label: 'Length', mono: true, align: 'right' },
-  { key: 'parts', label: 'Parts', align: 'right' },
 ]
 const rows = computed(() =>
   vods.value.map((v) => ({
     id: v.id,
-    title: v.title,
-    date: v.createdAt.toISOString().slice(0, 10),
-    length: toClock(v.duration),
-    parts: v.uploads.length,
-    chapters: v.chapters.length,
+    title: v.title ?? 'Untitled',
+    date: v.createdAt.slice(0, 10),
+    length: toClock(v.duration_seconds),
+    hidden: v.hidden,
+    merged: v.merged_into,
   })),
 )
 
@@ -81,6 +109,7 @@ onMounted(() => (document.title = 'VODs · Manage · vods.vexoulz.net'))
       <VxInput v-model="draft" type="search" placeholder="Search titles, or paste a VOD id…" clearable>
         <template #icon>⌕</template>
       </VxInput>
+      <VxSegmented :model-value="shown" :options="SHOWN" label="Visibility" @update:model-value="setShown" />
       <VxButton v-if="idLike" :to="`/manage/vods/${idLike}`" variant="primary">Open VOD {{ idLike }}</VxButton>
     </div>
 
@@ -94,16 +123,13 @@ onMounted(() => (document.title = 'VODs · Manage · vods.vexoulz.net'))
         <template #cell-id="{ row }"><RouterLink :to="`/manage/vods/${row.id}`">{{ row.id }}</RouterLink></template>
         <template #cell-title="{ row }">
           <RouterLink :to="`/manage/vods/${row.id}`" class="title">{{ row.title }}</RouterLink>
-          <VxChip v-if="!row.chapters" tone="warn">no chapters</VxChip>
-        </template>
-        <template #cell-parts="{ row }">
-          <VxChip v-if="!row.parts" tone="warn">none</VxChip>
-          <span v-else>{{ row.parts }}</span>
+          <VxChip v-if="row.hidden" tone="warn" title="Gone from the public site">hidden</VxChip>
+          <VxChip v-if="row.merged" :title="`Merged into ${row.merged}`">merged</VxChip>
         </template>
       </VxTable>
       <div class="more">
-        <VxButton v-if="vods.length < total" :loading="loading" @click="more">More</VxButton>
-        <span class="vx-muted vx-mono small">{{ vods.length }} of {{ total }}</span>
+        <VxButton v-if="next" :loading="loading" @click="more">More</VxButton>
+        <span class="vx-muted vx-mono small">{{ vods.length }} shown</span>
       </div>
     </template>
 
@@ -126,6 +152,7 @@ onMounted(() => (document.title = 'VODs · Manage · vods.vexoulz.net'))
 <style scoped>
 a { color: inherit; }
 .search { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.search { align-items: center; }
 .search > :first-child { flex: 1 1 260px; max-width: 480px; }
 .sk { display: flex; flex-direction: column; gap: 6px; }
 .title { margin-right: 6px; }

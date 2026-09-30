@@ -94,7 +94,20 @@ The existing `Authorization: Bearer <admin api key>` keeps working for scripts. 
   the last `bot_chat` job read from doomtp-bot's log: `fetched_at`, `since`/`until`, `keyed` (read with a key, so
   removals are in), `rows`, and `coverage.gaps` (`[{from, to, reason}]`, ms since the epoch); null before one ran
   (twitch-archive PR #26).
-- `PATCH /admin/vods/{id}` `{"title"?: string}` → the updated VOD.
+- `GET /admin/vods?q=&hidden=&limit=&before=` → `{"data": [{id, title, createdAt, duration, duration_seconds,
+  thumbnail_url, stream_id, hidden, merged_into}], "next": <cursor> | null}`, newest first, hidden and merged VODs
+  included. `q` matches the title, or is a VOD id; `hidden=true|false` filters; `before` is the last page's `next`
+  (twitch-archive PR #30). The Manage VODs page uses it instead of the public list, which leaves hidden VODs out.
+- `PATCH /admin/vods/{id}` `{"title"?, "hidden"?, "thumbnailUrl"?: http(s) URL | null, "duration"?: "HH:MM:SS",
+  "createdAt"?: ISO}` → the updated VOD (with `hidden`). `thumbnailUrl: null` falls back to the first YouTube part's.
+  The duration can't end before the last chapter or games row. A merged VOD refuses everything but `hidden` (409).
+  Audited with before and after (twitch-archive PR #30).
+- Hidden VODs are gone from the public API as if missing: not in `/vods` or `/games`, 404 on `/vods/{id}` and its
+  comments, left out of games-played and `/v1/status`'s latest VOD.
+- `GET /admin/vods/{id}/games` → the VOD's games rows `[{start_time, end_time, game_id, game_name, chapter_image,
+  title?, thumbnail_url?, video_provider?, video_id?}]`; `PUT` with `{"games": [...]}` replaces them. Validated:
+  sorted by start, no overlaps, inside the duration, `game_name` required. These are what the games pages list, not
+  the chapters; the editor can start them from the chapters.
 - `PUT /admin/vods/{id}/chapters` `{"chapters": [{"name", "gameId", "imageTemplate"?, "start", "length",
   "restricted", "kind"?}], "locked": bool}` → the updated VOD. `kind: "gap"` keeps a merge's gap chapter one. Validate: sorted by start, no overlaps, inside the VOD's
   duration, lengths > 0. Store `image` too (template with a small size filled in) so old readers keep working.
@@ -128,6 +141,24 @@ For one broadcast that Twitch cut in two (merge), or two streams in one VOD (spl
 - Twitch re-fetches (`/admin/chapters`, `/admin/emotes`, `/admin/logs`, `/admin/duration`, `/admin/download`,
   `/admin/reupload`, `/admin/delete`, …) answer 409 for a merged or split VOD. `/admin/youtube/parts` still works;
   the page asks to run it after a merge or split, since the descriptions list the old parts.
+
+## 4c. Runtime settings (twitch-archive PR #31)
+
+- `GET /admin/settings` → `{"data": [{key, value, default, overridden, type: "bool"|"int"|"float"|"text"|"list"|
+  "steps", group: "Capture"|"YouTube"|"Pipeline"|"Runner", applies: "now"|"next job", help, min, max, updatedAt,
+  updatedBy, choices?}]}`. `default` is the worker's env value; `choices` (for `steps`) lists each job kind's steps.
+- `PATCH /admin/settings` `{key: value, ...}` → the same list; all or nothing (400 names the refused key).
+- `DELETE /admin/settings/{key}` → the same list, with that key back to its env default.
+- Secrets, URLs, paths, the channel and DB settings are never listed. All three are audited with before and after.
+
+## 4d. Storage (twitch-archive PR #32)
+
+- `GET /admin/storage?refresh=` → `{"disk": {total, used, free} | null, "folders": [{area: "vods"|"live", name,
+  path, bytes, files, modifiedAt, vod: {id, title, hidden} | null, jobs: {active: [job], last: job | null}, stale}],
+  "cacheSeconds": 30}`. Paths are relative (`vods/123`). `stale`: no job for it is queued, running or paused, and it
+  has no VOD or its last job failed or was cancelled. The scan is cached; `refresh=true` rescans.
+- `DELETE /admin/storage/{area}/{name}` → `{path, bytes, files}` freed. 409 while a job for it is active, 404 for an
+  unknown folder, 400 for a bad name. Audited with the bytes freed.
 
 ## 5. Audit log — new
 

@@ -1,7 +1,7 @@
 // Editing a VOD's chapters and uploads: draft rows for the forms, the same checks the worker makes (so mistakes show
 // next to the row before saving), and the request bodies. Pure functions; the pages hold the drafts.
-import { toClock, toSeconds, type RawChapter, type RawDrive, type RawUpload } from '@vexoulz/vods-core'
-import type { ChapterEdit, YoutubeEdit } from './api'
+import { boxArt, toClock, toSeconds, type RawChapter, type RawDrive, type RawUpload } from '@vexoulz/vods-core'
+import type { AdminVod, ChapterEdit, GameRow, VodPatch, YoutubeEdit } from './api'
 
 let nextKey = 1
 const key = () => nextKey++
@@ -210,3 +210,151 @@ export function driveErrors(rows: readonly DriveDraft[]): Map<number, string> {
 }
 
 export const driveEdits = (rows: readonly DriveDraft[]): RawDrive[] => rows.map((r) => ({ id: r.id.trim(), type: r.type }))
+
+// ---- details (title, thumbnail, duration, date) ----
+
+export interface DetailsDraft {
+  title: string
+  /** An http(s) URL, or '' for the default (the first YouTube part's). */
+  thumbnailUrl: string
+  /** Seconds. */
+  duration: number
+  /** The `datetime-local` value, in this browser's time zone. */
+  createdAt: string
+}
+
+const pad = (n: number) => String(n).padStart(2, '0')
+
+/** An ISO time → a `datetime-local` value in this browser's zone ("2026-09-30T20:00:05"). */
+export function toLocalInput(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
+/** A `datetime-local` value (this browser's zone) → ISO with `Z`; null when it can't be read. */
+export function fromLocalInput(value: string): string | null {
+  if (!/^\d{4}-\d\d-\d\dT\d\d:\d\d(:\d\d(\.\d+)?)?$/.test(value)) return null
+  const d = new Date(value)
+  return Number.isNaN(d.getTime()) ? null : d.toISOString()
+}
+
+/** Seconds → the worker's `HH:MM:SS` (whole seconds, hours zero-padded and allowed past 99). */
+export function hhmmss(seconds: number): string {
+  const s = Math.round(seconds)
+  return `${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)}`
+}
+
+export function vodSeconds(vod: Pick<AdminVod, 'duration' | 'duration_seconds'>): number {
+  if (vod.duration_seconds != null) return vod.duration_seconds
+  const s = toSeconds(vod.duration)
+  return Number.isFinite(s) ? s : 0
+}
+
+export function detailsDraft(vod: AdminVod): DetailsDraft {
+  return {
+    title: vod.title ?? '',
+    thumbnailUrl: vod.thumbnail_url ?? '',
+    duration: vodSeconds(vod),
+    createdAt: toLocalInput(vod.createdAt),
+  }
+}
+
+/**
+ * Problems by field, matching the worker's checks. `contentEnd` is where the last chapter or games row ends: the
+ * duration can't be shorter.
+ */
+export function detailsErrors(d: DetailsDraft, contentEnd = 0): Map<keyof DetailsDraft, string> {
+  const errors = new Map<keyof DetailsDraft, string>()
+  if (!d.title.trim()) errors.set('title', 'The title can\'t be empty.')
+  const url = d.thumbnailUrl.trim()
+  if (url && !/^https?:\/\/\S+$/i.test(url)) errors.set('thumbnailUrl', 'An http(s) URL, or empty for the default.')
+  if (!Number.isFinite(d.duration) || d.duration <= 0) errors.set('duration', 'The duration must be a time.')
+  else if (contentEnd > d.duration + 1) errors.set('duration', `Chapters or games run to ${toClock(contentEnd)}: shorten them first.`)
+  if (!fromLocalInput(d.createdAt)) errors.set('createdAt', 'Pick a date and time.')
+  return errors
+}
+
+/** Only the fields that changed, as PATCH /admin/vods/:id takes them. */
+export function detailsPatch(d: DetailsDraft, vod: AdminVod): VodPatch {
+  const was = detailsDraft(vod)
+  const patch: VodPatch = {}
+  if (d.title.trim() !== was.title) patch.title = d.title.trim()
+  if (d.thumbnailUrl.trim() !== was.thumbnailUrl) patch.thumbnailUrl = d.thumbnailUrl.trim() || null
+  if (Math.round(d.duration) !== Math.round(was.duration)) patch.duration = hhmmss(d.duration)
+  if (d.createdAt !== was.createdAt) {
+    const at = fromLocalInput(d.createdAt)
+    if (at) patch.createdAt = at
+  }
+  return patch
+}
+
+// ---- games rows ----
+
+export interface GameDraft extends GameValue {
+  key: number
+  start: number
+  end: number
+  /** The row's other fields (upload id, title, thumbnail…), sent back unchanged. */
+  rest: Omit<GameRow, 'start_time' | 'end_time' | 'game_id' | 'game_name' | 'chapter_image'>
+  /** The saved box art, kept when the game didn't change. */
+  image: string | null
+}
+
+export function gameDrafts(rows: readonly GameRow[] | null | undefined): GameDraft[] {
+  return (rows ?? []).map(({ start_time, end_time, game_id, game_name, chapter_image, ...rest }) => ({
+    key: key(),
+    name: game_name || null,
+    gameId: game_id ?? null,
+    imageTemplate: templateOf(chapter_image),
+    image: chapter_image ?? null,
+    start: Number(start_time),
+    end: Number(end_time),
+    rest,
+  }))
+}
+
+/** Games rows from the VOD's chapters (cut ones and gaps left out), as a starting point. */
+export function gamesFromChapters(chapters: readonly RawChapter[] | null | undefined): GameDraft[] {
+  return chapterDrafts(chapters)
+    .filter((c) => !c.restricted && c.kind !== 'gap' && c.name)
+    .sort((a, b) => a.start - b.start)
+    .map((c) => ({ key: key(), name: c.name, gameId: c.gameId, imageTemplate: c.imageTemplate, image: null, start: c.start, end: c.end, rest: {} }))
+}
+
+export function newGame(rows: readonly GameDraft[], duration: number): GameDraft {
+  const start = rows.reduce((m, r) => Math.max(m, r.end), 0)
+  return { key: key(), name: null, gameId: null, imageTemplate: null, image: null, start, end: Math.max(start + 1, duration), rest: {} }
+}
+
+/** Problems per row (by key), as the worker checks them: a game, end after start, inside the VOD, no overlap. */
+export function gameErrors(rows: readonly GameDraft[], duration: number): Map<number, string> {
+  const errors = new Map<number, string>()
+  let prev: GameDraft | null = null
+  for (const r of [...rows].sort((a, b) => a.start - b.start)) {
+    if (!r.name?.trim()) errors.set(r.key, 'Pick a game.')
+    else if (!Number.isFinite(r.start) || r.start < 0) errors.set(r.key, 'Start must be a time ≥ 0:00.')
+    else if (!Number.isFinite(r.end) || r.end <= r.start) errors.set(r.key, 'End must be after the start.')
+    else if (duration > 0 && r.end > duration + 1) errors.set(r.key, `Ends after the VOD (${toClock(duration)}).`)
+    else if (prev && r.start < prev.end - 0.001) errors.set(r.key, `Overlaps the row before it (ends ${toClock(prev.end)}).`)
+    prev = r
+  }
+  return errors
+}
+
+/** The PUT body's rows, sorted by start (the worker refuses them unsorted). */
+export function gameEdits(rows: readonly GameDraft[]): GameRow[] {
+  return [...rows]
+    .sort((a, b) => a.start - b.start)
+    .map((r) => {
+      const same = r.image && templateOf(r.image) === r.imageTemplate
+      return {
+        ...r.rest,
+        start_time: r.start,
+        end_time: r.end,
+        game_id: r.gameId,
+        game_name: (r.name ?? '').trim(),
+        chapter_image: same ? r.image : boxArt(r.imageTemplate, 40),
+      }
+    })
+}

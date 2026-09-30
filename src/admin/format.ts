@@ -31,3 +31,16 @@ export function stepStates(job: Pick<Job, 'state' | 'step' | 'steps' | 'pauseBef
     pauseBefore: job.pauseBefore?.includes(name) ?? false,
   }))
 }
+
+/** Bytes → "18.4 GB" (binary units, as `du -h` counts them). */
+export function bytes(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return '—'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let v = n
+  let i = 0
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024
+    i++
+  }
+  return `${i && v < 10 ? v.toFixed(1) : Math.round(v)} ${units[i]}`
+}

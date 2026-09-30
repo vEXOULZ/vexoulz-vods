@@ -1,14 +1,18 @@
 <script setup lang="ts">
-// /manage/vods/:id: fix one VOD by hand (title, chapters, YouTube and Drive lists, emotes) and run its jobs.
-import { timeAgo, VxButton, VxCallout, VxChip, VxInput, VxSkeleton, useToast } from '@vexoulz/ui'
-import { toClock, toSeconds } from '@vexoulz/vods-core'
+// /manage/vods/:id: fix one VOD by hand (visibility, details, chapters, games, YouTube and Drive lists, emotes) and
+// run its jobs.
+import { timeAgo, VxButton, VxCallout, VxChip, VxDialog, VxSkeleton, VxSwitch, useToast } from '@vexoulz/ui'
+import { toClock } from '@vexoulz/vods-core'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { isSpliced, type AdminVod } from '@/admin/api'
 import ManageShell from '@/admin/ManageShell.vue'
 import ChaptersEditor from '@/admin/ChaptersEditor.vue'
+import DetailsEditor from '@/admin/DetailsEditor.vue'
 import DriveEditor from '@/admin/DriveEditor.vue'
+import { vodSeconds } from '@/admin/edits'
 import EmotesPanel from '@/admin/EmotesPanel.vue'
+import GamesEditor from '@/admin/GamesEditor.vue'
 import JobsTable from '@/admin/JobsTable.vue'
 import SplicePanel from '@/admin/SplicePanel.vue'
 import { stamp } from '@/admin/format'
@@ -50,26 +54,26 @@ const botGaps = computed(() =>
     (g) => `${stamp(new Date(g.from).toISOString())} → ${stamp(new Date(g.to).toISOString())}${g.reason ? ` (${g.reason})` : ''}`,
   ),
 )
-const duration = computed(() => {
-  const v = vod.value
-  if (!v) return 0
-  return v.duration_seconds ?? (Number.isFinite(toSeconds(v.duration)) ? toSeconds(v.duration) : 0)
-})
+const duration = computed(() => (vod.value ? vodSeconds(vod.value) : 0))
 
-const titleDraft = ref('')
-watch(() => vod.value?.title, (t) => (titleDraft.value = t ?? ''), { immediate: true })
-const titleSaving = ref(false)
-async function saveTitle() {
-  const t = titleDraft.value.trim()
-  if (!vod.value || !t || t === vod.value.title) return
-  titleSaving.value = true
+// Visibility: hiding asks first, since the VOD's links stop working; showing it again doesn't.
+const hideOpen = ref(false)
+const hiding = ref(false)
+function toggleHidden(show: boolean) {
+  if (!show) hideOpen.value = true
+  else void setHidden(false)
+}
+async function setHidden(hidden: boolean) {
+  if (!vod.value) return
+  hiding.value = true
   try {
-    vod.value = await admin.updateVod(vod.value.id, { title: t })
-    toast.show('Title saved', { duration: 3000 })
+    vod.value = await admin.updateVod(vod.value.id, { hidden })
+    hideOpen.value = false
+    toast.show(hidden ? 'Hidden from the site' : 'Public again', { duration: 3000 })
   } catch (e) {
     toast.show(errorMessage(e), { kind: 'error', duration: 5000 })
   } finally {
-    titleSaving.value = false
+    hiding.value = false
   }
 }
 
@@ -103,12 +107,19 @@ onMounted(() => (document.title = `VOD ${props.id} · Manage · vods.vexoulz.net
     <div v-else-if="!vod" class="sk" aria-busy="true"><VxSkeleton h="90px" /><VxSkeleton h="200px" /></div>
 
     <template v-else>
+      <VxCallout v-if="vod.hidden" tone="warn" title="Hidden">
+        This VOD is gone from the public site: the list, its watch page, the games pages and its chat. It's still here.
+      </VxCallout>
+
       <section class="panel vx-panel">
-        <form class="title-row" @submit.prevent="saveTitle">
-          <label class="vx-eyebrow" for="vod-title">Title</label>
-          <VxInput id="vod-title" v-model="titleDraft" class="title-input" />
-          <VxButton type="submit" variant="primary" :loading="titleSaving" :disabled="!titleDraft.trim() || titleDraft.trim() === vod.title">Save</VxButton>
-        </form>
+        <h2 class="title">{{ vod.title ?? 'Untitled' }}</h2>
+        <div class="visibility">
+          <VxSwitch id="vod-public" :model-value="!vod.hidden" :disabled="hiding" @update:model-value="toggleHidden" />
+          <label for="vod-public">
+            <strong>{{ vod.hidden ? 'Hidden' : 'Public' }}</strong>
+            <span class="vx-muted"> · {{ vod.hidden ? 'only Manage shows it' : 'on the site for everyone' }}</span>
+          </label>
+        </div>
         <dl class="facts">
           <div><dt>Id</dt><dd class="vx-mono">{{ vod.id }}</dd></div>
           <div><dt>Streamed</dt><dd :title="stamp(vod.createdAt)">{{ new Date(vod.createdAt).toLocaleString() }}</dd></div>
@@ -127,6 +138,11 @@ onMounted(() => (document.title = `VOD ${props.id} · Manage · vods.vexoulz.net
             <dd v-else class="vx-muted">not read</dd>
           </div>
         </dl>
+      </section>
+
+      <section class="panel vx-panel">
+        <h2 class="vx-eyebrow">Details</h2>
+        <DetailsEditor :vod="vod" @saved="saved" />
       </section>
 
       <section class="panel vx-panel">
@@ -152,6 +168,11 @@ onMounted(() => (document.title = `VOD ${props.id} · Manage · vods.vexoulz.net
         </section>
 
         <section class="panel vx-panel">
+          <h2 class="vx-eyebrow">Games</h2>
+          <GamesEditor :vod="vod" :duration="duration" @saved="saved" />
+        </section>
+
+        <section class="panel vx-panel">
           <h2 class="vx-eyebrow">YouTube parts</h2>
           <YoutubeEditor :vod="vod" @saved="saved" />
         </section>
@@ -166,6 +187,15 @@ onMounted(() => (document.title = `VOD ${props.id} · Manage · vods.vexoulz.net
           <EmotesPanel :vod-id="vod.id" :spliced="isSpliced(vod)" @job="jobStarted" />
         </section>
       </template>
+
+      <VxDialog v-model:open="hideOpen" title="Hide this VOD?" width="460px">
+        It leaves the public site at once: the VOD list, the games pages and the chat. Links to its watch page stop
+        working (they show "not found") until it's made public again. Nothing is deleted.
+        <template #actions="{ close }">
+          <VxButton @click="close">Cancel</VxButton>
+          <VxButton variant="danger" :loading="hiding" @click="setHidden(true)">Hide it</VxButton>
+        </template>
+      </VxDialog>
     </template>
   </ManageShell>
 </template>
@@ -176,9 +206,9 @@ a { color: inherit; }
 .sk { display: flex; flex-direction: column; gap: 12px; }
 .panel { padding: 14px 16px; margin-bottom: 16px; }
 h2 { margin: 0 0 12px; }
-.title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px; }
-.title-row label { flex-basis: 100%; }
-.title-input { flex: 1 1 260px; }
+.title { margin: 0 0 8px; font-size: 18px; font-weight: 600; overflow-wrap: anywhere; }
+.visibility { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; font-size: 13px; }
+.visibility label { cursor: pointer; }
 .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 16px; margin: 0; }
 dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.6; margin-bottom: 2px; }
 dd { margin: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
