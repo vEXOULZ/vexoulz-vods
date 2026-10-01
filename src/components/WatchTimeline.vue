@@ -40,7 +40,11 @@ const brks = computed(() => [...(props.breaks ?? [])].filter((b) => b > props.ra
 // it (`k`). A time right on a break is after it; a chapter ending there ends before it (`end`).
 function at(t: number, end = false) {
   const f = clamp(t - props.range.start, 0, len.value) / len.value
-  const k = brks.value.filter((b) => (end ? b < t : b <= t)).length
+  let k = 0
+  for (const b of brks.value) {
+    if (end ? b >= t : b > t) break
+    k++
+  }
   return { f, k }
 }
 const css = (f: number, k: number) => {
@@ -61,13 +65,16 @@ const breakSpans = computed(() => brks.value.map((b, i) => ({ t: b, left: css(at
 
 const chapters = computed(() => props.timeline.chapters.filter((c) => c.end > props.range.start && c.start < props.range.end))
 const spans = computed(() => props.timeline.partSpans())
-const label = (i: number) => props.partLabel?.(i) ?? `P${i + 1}`
+// Worked out once per timeline, not on every render (the bar renders on every tick, asking for each part's label).
+const labels = computed(() => spans.value.map((_, i) => props.partLabel?.(i) ?? `P${i + 1}`))
+const label = (i: number) => labels.value[i] ?? `P${i + 1}`
 const near = (t: number, list: readonly number[]) => list.some((x) => Math.abs(x - t) < 0.5)
 const jumpList = computed(() => (props.jumps ?? []).filter((j) => j.at > props.range.start && j.at < props.range.end))
 /** Part ticks, but not where a break or a jump already marks the spot. */
-const ticks = computed(() =>
-  spans.value.slice(1).filter((s) => !near(s.start, brks.value) && !near(s.start, jumpList.value.map((j) => j.at))),
-)
+const ticks = computed(() => {
+  const jumpAt = jumpList.value.map((j) => j.at)
+  return spans.value.slice(1).filter((s) => !near(s.start, brks.value) && !near(s.start, jumpAt))
+})
 
 // Part labels can't all fit when parts are short or the bar is narrow. They're placed in px, the one playing first,
 // and a label that would run into one already placed is hidden (its tick stays; the part menu still lists it). A
@@ -82,7 +89,7 @@ onMounted(() => {
 })
 onUnmounted(() => resize?.disconnect())
 watch(
-  () => spans.value.map((_, i) => label(i)).join('|'),
+  () => labels.value.join('|'),
   () => (labelWidths.value = spans.value.map((_, i) => labelEls[i]?.offsetWidth ?? 0)),
   { flush: 'post', immediate: true },
 )
@@ -91,11 +98,13 @@ function px(t: number) {
   const p = at(t)
   return p.f * Math.max(1, trackWidth.value - brks.value.length * BREAK) + p.k * BREAK
 }
-/** The first part of the run of same-labelled parts that `i` belongs to. */
-function runStart(i: number) {
-  while (i > 0 && label(i) === label(i - 1)) i--
-  return i
-}
+/** For each part, the first part of the run of same-labelled parts it belongs to. */
+const runStarts = computed(() => {
+  const out: number[] = []
+  labels.value.forEach((l, i) => out.push(i > 0 && l === labels.value[i - 1] ? out[i - 1]! : i))
+  return out
+})
+const runStart = (i: number) => runStarts.value[i] ?? i
 const shownLabels = computed(() => {
   const out = new Set<number>()
   if (!trackWidth.value) return out
@@ -296,11 +305,11 @@ const shownColor = computed(() => {
 .seg.gap { background: radial-gradient(circle, rgb(255 255 255 / 0.35) 1px, transparent 1.5px) 0 50% / 5px 100% repeat-x; }
 .unseg { position: absolute; top: 0; bottom: 0; pointer-events: none; background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--vx-bad) 55%, transparent) 0 2px, rgb(0 0 0 / 0.65) 2px 6px); }
 .tick { position: absolute; top: -9px; bottom: -2px; width: 1px; background: var(--vx-muted); pointer-events: none; }
-/* Between two streams of a playthrough: an empty notch in the bar with a jagged line down it. It's no time, so it
-   isn't hatched or dotted like the gaps and cuts that are. */
 /* Where a stream jumps within its VOD: a thin slit through the bar, with a notch above it. */
 .jump { position: absolute; top: -5px; bottom: 0; width: 3px; margin-left: -1.5px; z-index: 1; pointer-events: none; background: var(--vx-bg); }
 .jump::before { content: ""; position: absolute; left: -2px; right: -2px; top: 0; height: 3px; background: var(--vx-muted); clip-path: polygon(0 0, 100% 0, 50% 100%); }
+/* Between two streams of a playthrough: an empty notch in the bar with a jagged line down it. It's no time, so it
+   isn't hatched or dotted like the gaps and cuts that are. */
 .brk { position: absolute; top: -3px; bottom: -3px; z-index: 1; pointer-events: none; color: var(--vx-muted); }
 .brk svg { display: block; width: 100%; height: 100%; overflow: visible; }
 .brk polyline { fill: none; stroke: currentColor; stroke-width: 1.2; vector-effect: non-scaling-stroke; stroke-linejoin: round; }

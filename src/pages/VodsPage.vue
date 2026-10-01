@@ -14,7 +14,7 @@ import {
   VxSkeleton,
   VxTabs,
 } from '@vexoulz/ui'
-import { resumeAt, type GamePlayed, type Progress, type Vod } from '@vexoulz/vods-core'
+import { resumeProgress, type GamePlayed, type Progress } from '@vexoulz/vods-core'
 import { useVods, useVodsContext } from '@vexoulz/vods-core/vue'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -116,12 +116,8 @@ progress
   .list(500)
   .then((all) => (saved.value = new Map(all.map((p) => [p.vodId, p]))))
   .catch(() => undefined)
-/** Where to pick `v` up, if anywhere: a VOD that grew since it was finished (a playthrough's new stream) at the new part. */
-function resumeOf(v: Vod): Progress | null {
-  const p = saved.value.get(v.id)
-  const t = p ? resumeAt(p, { duration: v.duration }) : null
-  return p && t != null ? { ...p, t } : null
-}
+/** Where to pick each listed VOD up, if anywhere: one that grew since it was finished (a playthrough's new stream) at the new part. */
+const resume = computed(() => new Map(vods.value.map((v) => [v.id, resumeProgress(saved.value.get(v.id), v.duration)])))
 
 // ---- the latest VOD, highlighted on top when nothing is filtered (it stays in the grid too) ----
 const latest = computed(() => (!playthroughs.value && !hasFilters(state.value) && shownFrom.value === 0 && vods.value.length ? vods.value[0]! : null))
@@ -133,7 +129,7 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
   <VodsShell>
 
     <section v-if="latest" class="top">
-      <LatestVod :vod="latest" :progress="resumeOf(latest)" />
+      <LatestVod :vod="latest" :progress="resume.get(latest.id)" />
       <MostPlayed :games="games" :error="gamesError" @game="(g) => go({ game: g }, true)" @retry="fetchGames(true)" />
     </section>
 
@@ -183,7 +179,7 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
 
     <template v-else>
       <div class="grid">
-        <VodCard v-for="v in vods" :key="v.id" :vod="v" :progress="resumeOf(v)" />
+        <VodCard v-for="v in vods" :key="v.id" :vod="v" :progress="resume.get(v.id)" />
       </div>
       <div class="more">
         <VxButton v-if="hasMore" :loading="loading" @click="loadMore">Load {{ site.perPage }} more</VxButton>

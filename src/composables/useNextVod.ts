@@ -1,7 +1,7 @@
 // What to watch after a VOD ends: a random VOD that isn't finished, either one with progress saved (picked up where
 // it was left, or where it grew since it was finished) or one never opened. Drawn from the newest regular VODs and the
 // saved progress, loaded once, on the first ask.
-import { isResumable, resumeAt, type Progress, type Vod } from '@vexoulz/vods-core'
+import { isResumable, redirectTarget, resumeProgress, type Progress, type Vod } from '@vexoulz/vods-core'
 import { useVodsContext } from '@vexoulz/vods-core/vue'
 
 export interface NextVod {
@@ -44,10 +44,10 @@ export function useNextVod(currentId: () => string) {
       const c = left.splice(Math.floor(Math.random() * left.length), 1)[0]!
       const vod = c.vod ?? (await client.getVod(c.id).catch(() => null))
       // Gone, or now played inside another VOD (that one's own entry, if any, stands for it).
-      if (!vod || vod.mergedInto || vod.supersededBy?.length) continue
+      if (!vod || redirectTarget(vod, 0)) continue
       if (!c.saved) return { vod, t: null }
-      const t = resumeAt(c.saved, { duration: vod.duration })
-      if (t != null) return { vod, t } // else finished: not a suggestion
+      const at = resumeProgress(c.saved, vod.duration)
+      if (at) return { vod, t: at.t } // else finished: not a suggestion
     }
     return null
   }

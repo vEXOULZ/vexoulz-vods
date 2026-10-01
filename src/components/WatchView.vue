@@ -156,7 +156,6 @@ const partOffset = computed(() => {
 const chapters = computed(() => props.timeline.chapters.filter((c) => c.end > range.value.start && c.start < range.value.end))
 const chapter = computed(() => props.timeline.chapterAt(time.value))
 const chapterIdx = computed(() => (chapter.value ? chapters.value.indexOf(chapter.value) : -1))
-/** Where one source VOD hands over to the next, on a synthetic VOD. */
 /** A playthrough's streams (a merge or split plays as one VOD, so it has none to tell apart). */
 const streams = computed(() => (props.segments && !props.vod.synthetic?.supersedes ? props.segments.streams() : []))
 /** Where each stream after the first starts: a break on the bar. */
@@ -213,7 +212,7 @@ const shortDate = (d: Date) => d.toLocaleDateString(undefined, { day: 'numeric',
  */
 const madeOf = computed(() => {
   const segs = props.segments?.segments ?? []
-  return streams.value.map((st, i) => {
+  return streams.value.map((st) => {
     const first = segs[st.segment]!
     const last = segs.filter((s) => s.stream === st.stream).at(-1) ?? first
     const src = sourceById.value.get(st.vodId)
@@ -223,14 +222,15 @@ const madeOf = computed(() => {
       title: first.label ?? src?.title ?? st.vodId,
       sub: src ? shortDate(src.createdAt) : '',
       range: `${toClock(first.start)}–${toClock(last.end)} of the VOD`,
-      original: src ? watchPath(src, first.start) : watchPath({ id: st.vodId, uploads: [] }, first.start),
+      original: watchPath(src ?? { id: st.vodId, uploads: [] }, first.start),
       at: st.start,
-      current: time.value >= st.start && (i === streams.value.length - 1 || time.value < streams.value[i + 1]!.start),
       /** Its VOD, from where this stream's last window ends (to watch on past it). */
-      finish: src ? watchPath(src, last.end) : watchPath({ id: st.vodId, uploads: [] }, last.end),
+      finish: watchPath(src ?? { id: st.vodId, uploads: [] }, last.end),
     }
   })
 })
+/** Index into `madeOf` of the stream playing (kept out of `madeOf`, which then doesn't rebuild on every tick). */
+const currentStream = computed(() => streams.value.findLastIndex((st) => st.start <= time.value))
 const appearsIn = computed(() => props.vod.appearsIn ?? [])
 
 // ---- stream handoff ----
@@ -327,10 +327,9 @@ async function another() {
 watch(playing, (v) => v && (ending.value = null))
 
 // ---- chat + progress ----
-// Chat is the playing source's on a synthetic VOD, else this VOD's.
-const chatVodId = computed(() => props.segments?.segmentAt(time.value)?.segment.vodId ?? props.vod.id)
-// The chats that VOD has, once chat's first page says (kept here, since useChat's own ref doesn't exist yet when
-// its options are first read). Tagged with the VOD, so the next VOD doesn't start from this one's.
+// The chats the VOD whose chat is showing has (on a synthetic VOD, the playing source's), once chat's first page says
+// (kept here, since useChat's own ref doesn't exist yet when its options are first read). Tagged with the VOD, so the
+// next VOD doesn't start from this one's.
 const knownSources = shallowRef<{ vodId: string; sources: ChatSources } | null>(null)
 const replay = useChat({
   vodId: () => props.vod.id,
@@ -339,10 +338,10 @@ const replay = useChat({
   offset: toRef(chat, 'delay'),
   segments: () => props.segments,
   chatSource: () =>
-    chatSourceFor(chat.source, knownSources.value?.vodId === chatVodId.value ? knownSources.value.sources : null),
+    chatSourceFor(chat.source, knownSources.value && knownSources.value.vodId === replay.vodId.value ? knownSources.value.sources : null),
 })
 watch(replay.sources, (s) => {
-  if (s) knownSources.value = { vodId: chatVodId.value, sources: s }
+  if (s) knownSources.value = { vodId: replay.vodId.value, sources: s }
 })
 const chatError = computed(() => replay.error.value?.message ?? null)
 if (props.track) useProgress({ vodId: () => props.vod.id, duration: () => props.vod.duration, time, playing })
@@ -526,8 +525,8 @@ useShortcuts(() => shortcuts.value)
               <template #default="{ close }">
                 <template v-if="madeOf.length">
                   <div class="vx-eyebrow menu-head">Streams · {{ madeOf.length }}</div>
-                  <div v-for="m in madeOf" :key="m.key" class="stream-row">
-                    <VxMenuItem :current="m.current" :sub="m.sub" :title="`${m.title} · ${m.range}`" @click="seek(m.at); close()">
+                  <div v-for="(m, i) in madeOf" :key="m.key" class="stream-row">
+                    <VxMenuItem :current="i === currentStream" :sub="m.sub" :title="`${m.title} · ${m.range}`" @click="seek(m.at); close()">
                       <template #lead><span class="smark vx-mono">{{ m.mark }}</span></template>
                       {{ m.title }}
                     </VxMenuItem>

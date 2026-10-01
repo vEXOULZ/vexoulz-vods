@@ -3,7 +3,7 @@
 // with neither, playback resumes where this browser left off. A VOD merged into another one, or replaced by a
 // synthetic VOD (a merge or split that keeps the original), sends you to the same moment in that one.
 import { useToast, VxButton, VxCallout, VxEmptyState, VxSkeleton } from '@vexoulz/ui'
-import { isFinished, isResumable, parseTimestamp, resumeAt, supersededTarget, toClock, toHMS, type Position, type UploadType } from '@vexoulz/vods-core'
+import { isFinished, isResumable, parseTimestamp, redirectTarget, resumeProgress, toClock, toHMS, type Position, type UploadType } from '@vexoulz/vods-core'
 import { useVodsContext, useWatch } from '@vexoulz/vods-core/vue'
 import { computed, shallowRef, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -24,11 +24,12 @@ const { vod, sources, timeline, segments, uploadType, download, loading, notFoun
 // Old links to a VOD that now plays inside another one: the later half of a merged broadcast, or an original a
 // synthetic VOD replaces (merge or split). Same route type, same moment, and this browser's progress on the old id
 // carries over.
-const moved = computed(() => !!(vod.value?.mergedInto || vod.value?.supersededBy?.length))
+const moved = computed(() => !!vod.value && redirectTarget(vod.value, 0) !== null)
 watch(
-  vod,
-  async (v) => {
-    if (!v || !(v.mergedInto || v.supersededBy?.length)) return
+  moved,
+  async (m) => {
+    const v = vod.value
+    if (!m || !v) return
     const from = props.id
     let t = parseTimestamp(typeof route.query.t === 'string' ? route.query.t : null)
     if (!t) {
@@ -37,7 +38,7 @@ watch(
     }
     if (props.id !== from) return
     const base = route.path.split('/')[1] || 'vods'
-    const to = v.mergedInto ? { id: v.mergedInto.id, t: v.mergedInto.offset + (t ?? 0) } : supersededTarget(v, t ?? 0)!
+    const to = redirectTarget(v, t ?? 0)!
     router.replace({ path: `/${base}/${encodeURIComponent(to.id)}`, query: to.t > 0 ? { t: `${Math.floor(to.t)}s` } : {}, hash: route.hash })
   },
   { immediate: true },
@@ -55,10 +56,10 @@ watch(
       const saved = await progress.get(props.id).catch(() => null)
       if (tl !== timeline.value) return
       // Finished before it grew (a playthrough's new stream): picks up where the new part starts.
-      const at = saved && vod.value ? resumeAt(saved, { duration: vod.value.duration }) : null
-      if (saved && at != null) {
-        start.value = tl.locate(at)
-        toast.show(isFinished(saved) ? `New since you finished it: from ${toClock(at)}` : `Resumed at ${toClock(at)}`, { kind: 'info' })
+      const at = resumeProgress(saved, vod.value?.duration)
+      if (saved && at) {
+        start.value = tl.locate(at.t)
+        toast.show(isFinished(saved) ? `New since you finished it: from ${toClock(at.t)}` : `Resumed at ${toClock(at.t)}`, { kind: 'info' })
         return
       }
     }
