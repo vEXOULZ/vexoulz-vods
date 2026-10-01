@@ -148,6 +148,8 @@ const chapterIdx = computed(() => (chapter.value ? chapters.value.indexOf(chapte
 const streams = computed(() => (props.segments && !props.vod.synthetic?.supersedes ? props.segments.streams() : []))
 /** Where each stream after the first starts: a break on the bar. */
 const streamBreaks = computed(() => streams.value.slice(1).map((s) => s.start))
+/** Where a playthrough's stream skips part of its VOD (two windows of one VOD, back to back). */
+const streamJumps = computed(() => (streams.value.length ? props.segments!.jumps().map((j) => ({ at: j.at, skipped: j.to - j.from })) : []))
 /** "S2" for a chapter of the second stream, when there's more than one. */
 function chapterStream(c: { start: number }): string | null {
   if (streams.value.length < 2) return null
@@ -308,6 +310,7 @@ useShortcuts(() => shortcuts.value)
             :part-index="partIndex"
             :part-label="partLabel"
             :breaks="streamBreaks"
+            :jumps="streamJumps"
             :palette="palette"
             :playing="playing"
             :rate="rate"
