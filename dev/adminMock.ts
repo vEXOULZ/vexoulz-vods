@@ -527,7 +527,12 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
             if (res.statusCode >= 400) return
             const am = /\/admin\/(vods|jobs)\/([^/]+)/.exec(path)
             const target = am ? `${am[1] === 'vods' ? 'vod' : 'job'}:${am[2]}` : b.vodId ? `vod:${b.vodId}` : null
-            audit.unshift({ id: ++auditId, at: iso(), actor: s.user ? `twitch:${s.user.id}` : 'password', actorLogin: s.user?.login ?? null, action: `${method} ${path.replace(/\/\d+/g, '/{id}')}`, target, detail: Object.keys(b).length ? b : null })
+            // GET /api/v2/audit's shape (the worker names actions "vod.update" and so on; the mock keeps the route).
+            audit.unshift({
+              id: ++auditId, at: iso(), actor_kind: 'user', actor_id: s.user ? s.user.id : 'password', actor_login: s.user?.login ?? null,
+              via: 'web', action: `${method} ${path.replace(/\/\d+/g, '/{id}')}`, target, scope: null, outcome: 'ok',
+              before: null, after: null, detail: Object.keys(b).length ? b : null, request_id: null, job_run_id: null,
+            })
           })
         }
 
@@ -828,10 +833,13 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
             .slice(0, 10)
             .map((g) => ({ gameId: g.gameId, name: g.name, imageTemplate: g.imageTemplate ?? null })))
         }
-        if (path === '/admin/audit') {
-          const before = Number(url.searchParams.get('before')) || Infinity
+        if (path === '/api/v2/audit') {
+          // The cursor is opaque to the page; here it is just the last id served.
+          const before = Number(url.searchParams.get('cursor')) || Infinity
           const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 500)
-          return send(res, 200, { data: audit.filter((a) => (a.id as number) < before).slice(0, limit) })
+          const rows = audit.filter((a) => (a.id as number) < before)
+          const items = rows.slice(0, limit)
+          return send(res, 200, { items, next_cursor: rows.length > limit ? String(items[items.length - 1]!.id) : null })
         }
 
         // ---- the worker's VOD routes: each starts a job ----

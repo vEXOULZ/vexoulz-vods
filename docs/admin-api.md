@@ -164,3 +164,8 @@ For one broadcast that Twitch cut in two (merge), or two streams in one VOD (spl
 
 Every state-changing admin request is recorded: `{at, actor: "password" | "api-key", action, target, detail}`.
 `GET /admin/audit?before=&limit=` → `{"data": [...]}`.
+
+`/manage/audit` now reads `GET /api/v2/audit?cursor=&limit=` instead → `{"items": [...], "next_cursor"}` (vex-platform's
+shape: `actor_kind`, `actor_id`, `actor_login`, `via`, dotted `action`s, `outcome`, `before`/`after`/`detail`, ISO `at`).
+It lists every actor, the worker's own jobs and refused requests too, where `/admin/audit` lists admins only. Same
+session cookie; errors there are problem details (`detail` is the message).
