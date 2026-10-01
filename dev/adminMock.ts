@@ -27,6 +27,7 @@ interface Job {
   lastError: string | null; payload: Record<string, unknown>; notBefore: string | null
   pauseBefore: string[] | null; pauseNext: boolean; createdAt: string; updatedAt: string
   ticks: number; cancelRequested: boolean; actor: { kind: string; id: string | null; login: string | null; via: string }
+  parentId?: number | null
 }
 interface Event { seq: number; at: string; level: 'info' | 'warning' | 'error'; step: string | null; message: string; progress: { done: number; total: number; unit: string } | null }
 
@@ -62,8 +63,19 @@ add('reupload', '2309876543', 'failed', 1, 60 * 5, { lastError: 'YouTube quota e
 add('download', '2311111111', 'paused', 2, 90, { pauseBefore: ['upload'] })
 add('archive', '2312345678', 'running', 6, 40)
 add('emotes', '2312345678', 'queued', 0, 1)
+// A backfill and the bot_chat runs it queued (GET /api/v2/jobs/{id}/related shows them as a tree).
+const backfillJob = add('bot_chat_backfill', null, 'done', 99, 25)
+for (const [i, vodId] of ['2312345678', '2311111111', '2309876543'].entries()) {
+  add('bot_chat', vodId, i < 2 ? 'done' : 'running', 0, 24 - i * 2, { parentId: backfillJob.id, payload: { backfill: true }, actor: childActor(backfillJob) })
+}
+
+/** The actor of a run another run queued (vex-platform's StepContext.enqueue). */
+function childActor(parent: Job): Job['actor'] {
+  return { kind: 'job', id: String(parent.id), login: parent.kind, via: 'job' }
+}
 
 function advance() {
+  const queuedBy: Job[] = []
   for (const job of jobs) {
     if (job.state === 'queued') {
       job.state = 'running'
@@ -95,6 +107,7 @@ function advance() {
       job.step = null
       log(job, 'Job done')
       if (job.kind === 'bot_chat' && job.vodId) botChats.set(job.vodId, fakeBotChat(job.vodId))
+      if (job.kind === 'bot_chat_backfill') queuedBy.push(job)
     } else {
       job.step = steps[i + 1]!
       if (job.pauseNext || job.pauseBefore?.includes(job.step)) {
@@ -104,13 +117,21 @@ function advance() {
       } else log(job, `Step ${job.step} started`)
     }
   }
+  // Like the worker's backfill: one bot_chat run per VOD without bot chat, queued by the backfill.
+  for (const parent of queuedBy) {
+    const ids = [...vods.keys()].filter((id) => !botChats.has(id)).slice(0, 4)
+    for (const vodId of ids.length ? ids : ['2312345678', '2311111111']) {
+      const child = add('bot_chat', vodId, 'queued', 0, 0, { parentId: parent.id, payload: { backfill: true }, actor: childActor(parent) })
+      log(parent, `queued bot chat for ${vodId}: job ${child.id}`)
+    }
+  }
 }
 
 /** GET /api/v2/jobs' shape (vex-platform JobOut); inside, the mock keeps v1's names. */
 const v2Job = (j: Job) => {
   const finished = ['done', 'failed', 'cancelled'].includes(j.state)
   return {
-    id: j.id, kind: j.kind, subject: j.vodId ? `vod:${j.vodId}` : null, scope: null,
+    id: j.id, kind: j.kind, subject: j.vodId ? `vod:${j.vodId}` : null, scope: null, parent_id: j.parentId ?? null,
     state: j.state === 'done' ? 'succeeded' : j.state, step: j.step, steps: KINDS[j.kind]!.steps, payload: j.payload,
     attempts: j.attempts, last_error: j.lastError, not_before: j.notBefore, pause_before: j.pauseBefore, pause_next: j.pauseNext,
     cancel_requested: j.cancelRequested, actor: j.actor, created_at: j.createdAt, updated_at: j.updatedAt,
@@ -747,9 +768,10 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
           const wanted = url.searchParams.getAll('state').map(v2State)
           const subject = url.searchParams.get('subject')
           const kind = url.searchParams.get('kind')
+          const parent = Number(url.searchParams.get('parent')) || null
           const before = Number(url.searchParams.get('cursor')) || Infinity
           const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 200)
-          const rows = jobs.filter((j) => j.id < before && (!wanted.length || wanted.includes(j.state)) && (!subject || (j.vodId && `vod:${j.vodId}` === subject)) && (!kind || j.kind === kind))
+          const rows = jobs.filter((j) => j.id < before && (!wanted.length || wanted.includes(j.state)) && (!subject || (j.vodId && `vod:${j.vodId}` === subject)) && (!kind || j.kind === kind) && (!parent || j.parentId === parent))
           const items = rows.slice(0, limit)
           return send(res, 200, { items: items.map(v2Job), next_cursor: rows.length > limit ? String(items[items.length - 1]!.id) : null })
         }
@@ -789,6 +811,19 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
             return send(res, 200, v2Job(job))
           }
           if (!action && method === 'GET') return send(res, 200, v2Job(job))
+          if (action === 'related' && method === 'GET') {
+            let root = job
+            for (let up = root; up.parentId != null; ) {
+              const p = jobs.find((j) => j.id === up.parentId)
+              if (!p) break
+              root = up = p
+            }
+            const limit = Math.min(Number(url.searchParams.get('limit')) || 200, 200)
+            const tree = [root]
+            for (let i = 0; i < tree.length; i++) tree.push(...jobs.filter((j) => j.parentId === tree[i]!.id))
+            const items = tree.sort((a, b) => a.id - b.id).slice(0, limit)
+            return send(res, 200, { root_id: root.id, items: items.map(v2Job), truncated: tree.length > limit })
+          }
           if (!action && method === 'PATCH') {
             if (!['queued', 'running', 'paused'].includes(job.state)) return conflict('only unfinished jobs can be changed')
             if ('pause_before' in b) job.pauseBefore = (b.pause_before as string[] | null) ?? null
