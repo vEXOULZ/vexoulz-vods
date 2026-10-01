@@ -4,7 +4,7 @@
 // On phones the same controls reflow under the video and chat goes below; nothing is dropped.
 // A synthetic VOD (a merge, split or playthrough) plays windows of other VODs: its timeline is a SegmentTimeline, chat
 // follows whichever source VOD is playing, and a "related" menu links a playthrough's streams and the playthroughs a VOD
-// is part of.
+// is part of. When a playthrough plays on into its next stream, a card over the video says so and counts down to go on.
 import {
   gamePalette,
   learnGameColors,
@@ -101,16 +101,21 @@ onUnmounted(() => {
 })
 
 function seek(t: number) {
+  jumped = true
+  if (handoff.value !== null) closeHandoff(true)
   const to = props.timeline.watchable(clamp(t, range.value.start, range.value.end))
   time.value = to
   wp?.seek(to)
 }
 function playPart(i: number) {
+  jumped = true
+  if (handoff.value !== null) closeHandoff(false)
   if (wp) wp.playPart(i)
   else time.value = spans.value[i]?.start ?? time.value
 }
 function togglePlay() {
   if (!wp) return
+  if (handoff.value !== null) return closeHandoff(true)
   if (wp.isPlaying()) wp.pause()
   else wp.play()
 }
@@ -213,10 +218,60 @@ const madeOf = computed(() => {
       original: src ? watchPath(src, first.start) : watchPath({ id: st.vodId, uploads: [] }, first.start),
       at: st.start,
       current: time.value >= st.start && (i === streams.value.length - 1 || time.value < streams.value[i + 1]!.start),
+      /** Its VOD, from where this stream's last window ends (to watch on past it). */
+      finish: src ? watchPath(src, last.end) : watchPath({ id: st.vodId, uploads: [] }, last.end),
     }
   })
 })
 const appearsIn = computed(() => props.vod.appearsIn ?? [])
+
+// ---- stream handoff ----
+// Playing on into a playthrough's next stream (not seeking there) pauses on a card: go on (by itself after a countdown,
+// which can be stopped), or finish the stream before on its own VOD.
+const AUTO_CONTINUE = 5
+/** Index into `madeOf` of the stream that's about to play, while the card is up. */
+const handoff = ref<number | null>(null)
+/** Seconds left before it goes on by itself; null once stopped. */
+const countdown = ref<number | null>(null)
+let countdownTimer: ReturnType<typeof setInterval> | undefined
+/** Set by a seek, so the time it lands on isn't taken for playing on. */
+let jumped = false
+let lastTime = time.value
+watch(time, (t) => {
+  const prev = lastTime
+  lastTime = t
+  if (jumped) return void (jumped = false)
+  if (handoff.value !== null || t <= prev || t - prev > 5) return
+  const i = streams.value.findIndex((s, k) => k > 0 && prev < s.start && t >= s.start)
+  if (i > 0) openHandoff(i)
+})
+function stopCountdown() {
+  clearInterval(countdownTimer)
+  countdown.value = null
+}
+function openHandoff(i: number) {
+  handoff.value = i
+  wp?.pause()
+  countdown.value = AUTO_CONTINUE
+  const until = Date.now() + AUTO_CONTINUE * 1000
+  countdownTimer = setInterval(() => {
+    countdown.value = Math.max(0, (until - Date.now()) / 1000)
+    if (countdown.value <= 0) closeHandoff(true)
+  }, 100)
+}
+function closeHandoff(play: boolean) {
+  stopCountdown()
+  handoff.value = null
+  if (play) wp?.play()
+}
+onUnmounted(stopCountdown)
+const handoffCard = computed(() => {
+  const i = handoff.value
+  if (i === null) return null
+  const from = madeOf.value[i - 1]
+  const to = madeOf.value[i]
+  return from && to ? { from, to } : null
+})
 const relatedCount = computed(() => madeOf.value.length + appearsIn.value.length)
 
 // ---- chat + progress ----
@@ -270,6 +325,25 @@ useShortcuts(() => shortcuts.value)
               <div class="vx-panel un-card">
                 <b>The YouTube player didn't load</b>
                 <p class="vx-muted">{{ playerError }} Check that youtube.com isn't blocked, then reload the page.</p>
+              </div>
+            </div>
+            <div v-else-if="handoffCard" class="unavail" role="dialog" aria-label="Next stream">
+              <div class="vx-panel un-card handoff">
+                <div class="vx-eyebrow">End of {{ handoffCard.from.mark }} · {{ handoffCard.from.sub }}</div>
+                <b><span class="vx-mono smark-next">{{ handoffCard.to.mark }}</span> {{ handoffCard.to.title }}</b>
+                <p class="vx-muted">Next stream, from {{ handoffCard.to.sub }}.</p>
+                <div v-if="countdown !== null" class="countdown" aria-hidden="true">
+                  <span :style="{ width: `${(countdown / AUTO_CONTINUE) * 100}%` }"></span>
+                </div>
+                <div class="un-actions">
+                  <VxButton variant="primary" @click="closeHandoff(true)">
+                    Continue<template v-if="countdown !== null"> in {{ Math.ceil(countdown) }}</template> →
+                  </VxButton>
+                  <VxButton :to="handoffCard.from.finish" :title="`${handoffCard.from.title}, from where this playthrough leaves it`">
+                    Finish {{ handoffCard.from.mark }} on its VOD ↗
+                  </VxButton>
+                  <VxButton v-if="countdown !== null" variant="ghost" @click="stopCountdown">Stop timer</VxButton>
+                </div>
               </div>
             </div>
             <div v-else-if="curBad" class="unavail">
@@ -464,6 +538,9 @@ useShortcuts(() => shortcuts.value)
 .un-card { max-width: 400px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
 .un-card p { font-size: 13px; line-height: 1.5; margin: 0; }
 .un-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.smark-next { color: var(--vx-accent); margin-right: 4px; }
+.countdown { height: 3px; border-radius: 2px; background: var(--vx-line); overflow: hidden; margin-top: 4px; }
+.countdown span { display: block; height: 100%; background: var(--vx-accent); transition: width 0.1s linear; }
 
 .controls { border-top: 1px solid var(--vx-line); background: rgb(0 0 0 / 0.7); }
 .peek {

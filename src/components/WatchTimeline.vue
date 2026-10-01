@@ -301,7 +301,7 @@ const shownColor = computed(() => {
 /* Where a stream jumps within its VOD: a thin slit through the bar, with a notch above it. */
 .jump { position: absolute; top: -5px; bottom: 0; width: 3px; margin-left: -1.5px; z-index: 1; pointer-events: none; background: var(--vx-bg); }
 .jump::before { content: ""; position: absolute; left: -2px; right: -2px; top: 0; height: 3px; background: var(--vx-muted); clip-path: polygon(0 0, 100% 0, 50% 100%); }
-.brk { position: absolute; top: -3px; bottom: -3px; z-index: 1; pointer-events: none; background: var(--vx-bg); color: var(--vx-muted); }
+.brk { position: absolute; top: -3px; bottom: -3px; z-index: 1; pointer-events: none; color: var(--vx-muted); }
 .brk svg { display: block; width: 100%; height: 100%; overflow: visible; }
 .brk polyline { fill: none; stroke: currentColor; stroke-width: 1.2; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
 /* Progress never paints over the chapter colours: what's still ahead is dimmed, and a thin accent line runs under
