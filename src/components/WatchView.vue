@@ -228,7 +228,7 @@ const appearsIn = computed(() => props.vod.appearsIn ?? [])
 // ---- stream handoff ----
 // Playing on into a playthrough's next stream (not seeking there) pauses on a card: go on (by itself after a countdown,
 // which can be stopped), or finish the stream before on its own VOD.
-const AUTO_CONTINUE = 5
+const AUTO_CONTINUE = 8
 /** Index into `madeOf` of the stream that's about to play, while the card is up. */
 const handoff = ref<number | null>(null)
 /** Seconds left before it goes on by itself; null once stopped. */
@@ -332,17 +332,27 @@ useShortcuts(() => shortcuts.value)
                 <div class="vx-eyebrow">End of {{ handoffCard.from.mark }} · {{ handoffCard.from.sub }}</div>
                 <b><span class="vx-mono smark-next">{{ handoffCard.to.mark }}</span> {{ handoffCard.to.title }}</b>
                 <p class="vx-muted">Next stream, from {{ handoffCard.to.sub }}.</p>
-                <div v-if="countdown !== null" class="countdown" aria-hidden="true">
-                  <span :style="{ width: `${(countdown / AUTO_CONTINUE) * 100}%` }"></span>
-                </div>
                 <div class="un-actions">
-                  <VxButton variant="primary" @click="closeHandoff(true)">
-                    Continue<template v-if="countdown !== null"> in {{ Math.ceil(countdown) }}</template> →
+                  <VxButton variant="primary" :label="countdown !== null ? `Continue (in ${Math.ceil(countdown)} seconds)` : 'Continue'" @click="closeHandoff(true)">
+                    Continue
+                    <span class="ring" aria-hidden="true">
+                      <template v-if="countdown !== null">
+                        <svg viewBox="0 0 20 20">
+                          <circle class="ring-track" cx="10" cy="10" r="8.5" pathLength="1" />
+                          <circle class="ring-left" cx="10" cy="10" r="8.5" pathLength="1" :stroke-dashoffset="1 - countdown / AUTO_CONTINUE" />
+                        </svg>
+                        <span class="ring-n vx-mono">{{ Math.ceil(countdown) }}</span>
+                      </template>
+                      <template v-else>→</template>
+                    </span>
                   </VxButton>
                   <VxButton :to="handoffCard.from.finish" :title="`${handoffCard.from.title}, from where this playthrough leaves it`">
                     Finish {{ handoffCard.from.mark }} on its VOD ↗
                   </VxButton>
-                  <VxButton v-if="countdown !== null" variant="ghost" @click="stopCountdown">Stop timer</VxButton>
+                  <!-- Kept (greyed out) once stopped, so the card doesn't change size. -->
+                  <VxButton variant="ghost" class="stop" :disabled="countdown === null" @click="stopCountdown">
+                    {{ countdown === null ? 'Timer stopped' : 'Stop timer' }}
+                  </VxButton>
                 </div>
               </div>
             </div>
@@ -539,8 +549,13 @@ useShortcuts(() => shortcuts.value)
 .un-card p { font-size: 13px; line-height: 1.5; margin: 0; }
 .un-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
 .smark-next { color: var(--vx-accent); margin-right: 4px; }
-.countdown { height: 3px; border-radius: 2px; background: var(--vx-line); overflow: hidden; margin-top: 4px; }
-.countdown span { display: block; height: 100%; background: var(--vx-accent); transition: width 0.1s linear; }
+.ring { position: relative; display: inline-grid; place-items: center; width: 20px; height: 20px; margin-left: 6px; }
+.ring svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.ring circle { fill: none; stroke: currentColor; stroke-width: 2; }
+.ring-track { opacity: 0.25; }
+.ring-left { stroke-dasharray: 1; stroke-linecap: round; transition: stroke-dashoffset 0.1s linear; }
+.ring-n { font-size: 10px; line-height: 1; }
+.stop { min-width: 15ch; }
 
 .controls { border-top: 1px solid var(--vx-line); background: rgb(0 0 0 / 0.7); }
 .peek {
@@ -573,7 +588,7 @@ useShortcuts(() => shortcuts.value)
   .stage { display: contents; }
   .video { flex: none; container-type: inline-size; }
   .video-box { width: 100%; }
-  .video:has(.unavail) .video-box { aspect-ratio: auto; min-height: 56.25cqw; }
+  .video:has(.unavail) .video-box { aspect-ratio: auto; min-height: 56.25cqw; display: grid; }
   .unavail { position: relative; }
   .video:has(.unavail) .yt { visibility: hidden; }
   /* Same controls as desktop, reflowed: title on its own line, everything else wraps below it */
