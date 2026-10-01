@@ -379,8 +379,8 @@ useShortcuts(() => shortcuts.value)
                 <p class="vx-muted">{{ playerError }} Check that youtube.com isn't blocked, then reload the page.</p>
               </div>
             </div>
-            <div v-else-if="handoffCard" class="unavail" role="dialog" aria-label="Next stream">
-              <div class="vx-panel un-card handoff">
+            <div v-else-if="handoffCard" class="unavail bare" role="dialog" aria-label="Next stream">
+              <div class="un-card handoff">
                 <div class="vx-eyebrow">End of {{ handoffCard.from.mark }} · {{ handoffCard.from.sub }}</div>
                 <b><span class="vx-mono smark-next">{{ handoffCard.to.mark }}</span> {{ handoffCard.to.title }}</b>
                 <p class="vx-muted">Next stream, from {{ handoffCard.to.sub }}.</p>
@@ -397,8 +397,8 @@ useShortcuts(() => shortcuts.value)
                 </div>
               </div>
             </div>
-            <div v-else-if="ending" class="unavail" role="dialog" :aria-label="ending.t != null ? 'Pick up where you left off' : 'Something else to watch?'">
-              <div class="vx-panel un-card handoff">
+            <div v-else-if="ending" class="unavail bare" role="dialog" :aria-label="ending.t != null ? 'Pick up where you left off' : 'Something else to watch?'">
+              <div class="un-card handoff">
                 <div class="vx-eyebrow">End of the VOD</div>
                 <b>{{ ending.t != null ? 'Pick up where you left off' : 'Something else to watch?' }}</b>
                 <NextVodPreview :vod="ending.vod" :t="ending.t" />
@@ -601,6 +601,8 @@ useShortcuts(() => shortcuts.value)
 .chat-reopen { position: absolute; right: 8px; top: 8px; }
 
 .unavail { position: absolute; inset: 0; display: grid; place-items: center; padding: 12px; background: rgb(0 0 0 / 0.75); }
+/* The player's own cards (next stream, end of the VOD) sit straight on the black where the video was, no panel. */
+.unavail.bare { background: #000; }
 .un-card { max-width: 400px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
 .un-card p { font-size: 13px; line-height: 1.5; margin: 0; }
 .un-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
