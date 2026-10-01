@@ -299,18 +299,38 @@ export interface AdminEmotes extends RawEmoteSets {
   updatedAt?: string
 }
 
+/** A row of the worker's audit log, as `GET /api/v2/audit` serves it (vex-platform's shape, snake_case). */
 export interface AuditEntry {
   id: number
+  /** ISO 8601 UTC. */
   at: string
-  /** "password", "api-key" or "twitch:<id>" (a Twitch sign-in). */
-  actor: 'password' | 'api-key' | `twitch:${string}`
+  /**
+   * What authenticated: `user` (a dashboard login; `actor_id` is the Twitch id, or "password"), `api_key`, or the
+   * worker itself (`system`, `job`).
+   */
+  actor_kind: 'user' | 'api_key' | 'system' | 'job' | 'anonymous'
+  actor_id: string | null
   /** The Twitch login of whoever signed in, when there was one (older entries have none). */
-  actorLogin?: string | null
-  /** "METHOD /route/{param}". */
+  actor_login: string | null
+  via: string
+  /** Dotted, e.g. "vod.update", "job.enqueue", "request.denied". */
   action: string
   /** "vod:<id>", "job:<id>" or null. */
   target: string | null
+  scope: string | null
+  /** "ok", "denied" or "failed". */
+  outcome: string
+  before: unknown
+  after: unknown
   detail: unknown
+  request_id: string | null
+  job_run_id: number | null
+}
+
+export interface AuditPage {
+  items: AuditEntry[]
+  /** Pass back as `cursor` for the next (older) page; null on the last. */
+  next_cursor: string | null
 }
 
 export class AdminApiError extends Error {
@@ -376,7 +396,9 @@ export class AdminClient {
       // not JSON (a proxy error page, say)
     }
     if (!res.ok) {
-      const msg = (data as { msg?: string; message?: string } | null)?.msg ?? (data as { message?: string } | null)?.message
+      // v1 answers {msg} (or {message}); /api/v2 answers problem details, whose text is `detail`.
+      const problem = data as { msg?: string; message?: string; detail?: unknown } | null
+      const msg = problem?.msg ?? problem?.message ?? (typeof problem?.detail === 'string' ? problem.detail : undefined)
       const retry = Number(res.headers.get('retry-after'))
       const { error: _e, msg: _m, message: _msg, ...extra } = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
       const err = new AdminApiError(res.status, msg || `HTTP ${res.status}`, Number.isFinite(retry) && retry > 0 ? retry : null, extra)
@@ -566,12 +588,13 @@ export class AdminClient {
   }
 
   // ---- audit ----
-  audit(q: { before?: number; limit?: number } = {}, signal?: AbortSignal): Promise<{ data: AuditEntry[] }> {
+  /** Newest first, every actor (the worker's own jobs too). Older pages: pass the last page's `next_cursor`. */
+  audit(q: { cursor?: string | null; limit?: number } = {}, signal?: AbortSignal): Promise<AuditPage> {
     const params = new URLSearchParams()
-    if (q.before) params.set('before', String(q.before))
+    if (q.cursor) params.set('cursor', q.cursor)
     if (q.limit) params.set('limit', String(q.limit))
     const qs = params.toString()
-    return this.request('GET', `/admin/audit${qs ? `?${qs}` : ''}`, undefined, signal)
+    return this.request('GET', `/api/v2/audit${qs ? `?${qs}` : ''}`, undefined, signal)
   }
 }
 

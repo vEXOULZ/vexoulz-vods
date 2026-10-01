@@ -126,4 +126,19 @@ describe('AdminClient: VODs, games, settings and storage', () => {
       ['/admin/storage/vods/123', 'DELETE', null],
     ])
   })
+
+  it('reads the audit log from /api/v2 by cursor, and takes a problem detail as the message', async () => {
+    const fetch = fakeFetch(200, { items: [], next_cursor: null })
+    const c = new AdminClient({ base: '/backend-admin', fetch })
+    await c.audit({ limit: 50 })
+    await c.audit({ cursor: 'abc', limit: 50 })
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+      '/backend-admin/api/v2/audit?limit=50',
+      '/backend-admin/api/v2/audit?cursor=abc&limit=50',
+    ])
+    const bad = new AdminClient({ base: '', fetch: fakeFetch(400, { type: 'about:blank', status: 400, code: 'bad_cursor', detail: 'not a cursor' }) })
+    const err = await bad.audit({ cursor: 'x' }).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(AdminApiError)
+    expect((err as AdminApiError).message).toBe('not a cursor')
+  })
 })
