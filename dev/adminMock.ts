@@ -7,16 +7,10 @@ import type { Plugin } from 'vite'
 
 type State = 'queued' | 'running' | 'paused' | 'done' | 'failed' | 'cancelled'
 const STATES: State[] = ['queued', 'running', 'paused', 'done', 'failed', 'cancelled']
-const GROUPS: Record<string, State[]> = {
-  waiting: ['queued'],
-  stopped: ['paused', 'failed', 'cancelled'],
-  active: ['queued', 'running', 'paused'],
-  finished: ['done', 'failed', 'cancelled'],
-}
-// Same kinds and steps as the worker (twitch-archive README, "Job kinds").
-const KINDS: Record<string, { steps: string[]; manualSteps: string[] }> = {
-  archive: { steps: ['capture', 'finalize', 'chapters', 'chat', 'emotes', 'split', 'upload', 'describe', 'cleanup'], manualSteps: [] },
-  download: { steps: ['ensure_source', 'chapters', 'split', 'upload', 'describe', 'cleanup'], manualSteps: [] },
+// Same kinds and steps as the worker (twitch-archive README, "Job kinds"). manualSteps are the kind's default pause gates.
+const KINDS: Record<string, { steps: string[]; manualSteps: string[]; description?: string; cooperative?: boolean }> = {
+  archive: { steps: ['capture', 'finalize', 'chapters', 'chat', 'emotes', 'split', 'upload', 'describe', 'cleanup'], manualSteps: [], description: 'Record a live stream and publish it', cooperative: true },
+  download: { steps: ['ensure_source', 'chapters', 'split', 'upload', 'describe', 'cleanup'], manualSteps: [], description: 'Download a Twitch VOD and upload it to YouTube' },
   reupload: { steps: ['ensure_source', 'split', 'upload', 'describe', 'cleanup'], manualSteps: ['upload'] },
   dmca: { steps: ['ensure_source', 'dmca_edit', 'split', 'upload', 'describe', 'cleanup'], manualSteps: ['upload'] },
   chat: { steps: ['chat'], manualSteps: [] },
@@ -32,7 +26,7 @@ interface Job {
   id: number; kind: string; vodId: string | null; state: State; step: string | null; attempts: number
   lastError: string | null; payload: Record<string, unknown>; notBefore: string | null
   pauseBefore: string[] | null; pauseNext: boolean; createdAt: string; updatedAt: string
-  ticks: number
+  ticks: number; cancelRequested: boolean; actor: { kind: string; id: string | null; login: string | null; via: string }
 }
 interface Event { seq: number; at: string; level: 'info' | 'warning' | 'error'; step: string | null; message: string; progress: { done: number; total: number; unit: string } | null }
 
@@ -53,6 +47,7 @@ function add(kind: string, vodId: string | null, state: State, stepIndex: number
   const job: Job = {
     id: nextId++, kind, vodId, state, step: state === 'done' ? null : steps[Math.min(stepIndex, steps.length - 1)]!,
     attempts: state === 'failed' ? 3 : 1, lastError: null, payload: {}, notBefore: null, pauseBefore: null, pauseNext: false,
+    cancelRequested: false, actor: { kind: 'system', id: null, login: null, via: 'job' },
     createdAt: iso(ageMin * 60_000), updatedAt: iso(ageMin * 30_000), ticks: 0, ...extra,
   }
   jobs.unshift(job)
@@ -77,6 +72,13 @@ function advance() {
       continue
     }
     if (job.state !== 'running') continue
+    if (job.cancelRequested) {
+      job.state = 'cancelled'
+      job.cancelRequested = false
+      job.updatedAt = iso()
+      log(job, 'Cancelled', 'warning')
+      continue
+    }
     const steps = KINDS[job.kind]!.steps
     job.ticks++
     const total = 8
@@ -104,10 +106,18 @@ function advance() {
   }
 }
 
-const json = (job: Job) => {
-  const { ticks: _t, ...rest } = job
-  return { ...rest, steps: KINDS[job.kind]!.steps }
+/** GET /api/v2/jobs' shape (vex-platform JobOut); inside, the mock keeps v1's names. */
+const v2Job = (j: Job) => {
+  const finished = ['done', 'failed', 'cancelled'].includes(j.state)
+  return {
+    id: j.id, kind: j.kind, subject: j.vodId ? `vod:${j.vodId}` : null, scope: null,
+    state: j.state === 'done' ? 'succeeded' : j.state, step: j.step, steps: KINDS[j.kind]!.steps, payload: j.payload,
+    attempts: j.attempts, last_error: j.lastError, not_before: j.notBefore, pause_before: j.pauseBefore, pause_next: j.pauseNext,
+    cancel_requested: j.cancelRequested, actor: j.actor, created_at: j.createdAt, updated_at: j.updatedAt,
+    started_at: j.state === 'queued' && j.attempts <= 1 ? null : j.createdAt, finished_at: finished ? j.updatedAt : null,
+  }
 }
+const v2State = (s: string): State => (s === 'succeeded' ? 'done' : (s as State))
 const counts = () => Object.fromEntries(STATES.map((s) => [s, jobs.filter((j) => j.state === s).length]))
 
 // ---- sessions ----
@@ -149,6 +159,9 @@ function send(res: ServerResponse, status: number, data?: unknown, headers: Reco
   res.end(data === undefined ? undefined : JSON.stringify(data))
 }
 const fail = (res: ServerResponse, status: number, msg: string) => send(res, status, { error: true, msg })
+/** vex-platform's errors: RFC 9457 problem details. */
+const problem = (res: ServerResponse, status: number, code: string, detail: string, errors?: Record<string, unknown>[]) =>
+  send(res, status, { type: 'about:blank', title: code, status, detail, code, ...(errors ? { errors } : {}) }, { 'content-type': 'application/problem+json' })
 const ok = (res: ServerResponse, msg: string, job?: Job) => send(res, 200, { error: false, msg, jobId: job?.id })
 
 // ---- VODs: real ones from the public archive API, edited in memory ----
@@ -199,7 +212,6 @@ const adminVod = (v: Json) => ({
   hidden: hidden.has(String(v.id)),
   chaptersLocked: locked.has(String(v.id)),
   botChat: botChats.get(String(v.id)) ?? null,
-  jobs: jobs.filter((j) => j.vodId === v.id).slice(0, 20).map(json),
   splices: splicesOf(String(v.id)),
 })
 
@@ -470,7 +482,7 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
         if (pm && hidden.has(id)) return send(res, 404, { name: 'NotFound', message: 'No record found', code: 404 })
         if (!pm || !spliced.has(id)) return next()
         if (deleted.has(id)) return send(res, 404, { name: 'NotFound', message: 'No record found', code: 404 })
-        const { chaptersLocked: _c, botChat: _b, jobs: _j, splices: _s, hidden: _h, ...pub } = adminVod(vods.get(id)!)
+        const { chaptersLocked: _c, botChat: _b, splices: _s, hidden: _h, ...pub } = adminVod(vods.get(id)!)
         return send(res, 200, pub)
       })
       server.middlewares.use(base, async (req, res) => {
@@ -525,12 +537,15 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
         if (method !== 'GET') {
           res.on('finish', () => {
             if (res.statusCode >= 400) return
-            const am = /\/admin\/(vods|jobs)\/([^/]+)/.exec(path)
-            const target = am ? `${am[1] === 'vods' ? 'vod' : 'job'}:${am[2]}` : b.vodId ? `vod:${b.vodId}` : null
+            const am = /\/(?:admin|api\/v2)\/(vods|jobs)\/([^/]+)/.exec(path)
+            const target = am ? `${am[1] === 'vods' ? 'vod' : 'job'}:${am[2]}` : b.vodId ? `vod:${b.vodId}` : typeof b.subject === 'string' ? b.subject : null
+            // vex-platform names its own job actions (job.enqueue, job.pause…); the worker's v1 routes keep the route as the name.
+            const jm = /^\/api\/v2\/jobs(?:\/\d+(?:\/(\w+))?)?$/.exec(path)
+            const action = jm ? `job.${jm[1] ?? (method === 'PATCH' ? 'update' : 'enqueue')}` : `${method} ${path.replace(/\/\d+/g, '/{id}')}`
             // GET /api/v2/audit's shape (the worker names actions "vod.update" and so on; the mock keeps the route).
             audit.unshift({
               id: ++auditId, at: iso(), actor_kind: 'user', actor_id: s.user ? s.user.id : 'password', actor_login: s.user?.login ?? null,
-              via: 'web', action: `${method} ${path.replace(/\/\d+/g, '/{id}')}`, target, scope: null, outcome: 'ok',
+              via: 'web', action, target, scope: null, outcome: 'ok',
               before: null, after: null, detail: Object.keys(b).length ? b : null, request_id: null, job_run_id: null,
             })
           })
@@ -542,10 +557,14 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
             api: { ok: true },
             youtube: { authorized: true, valid: true, error: null, checkedAt: iso(4 * 60_000) },
             live: { live: false, streamId: null, startedAt: null },
-            jobs: { counts: counts(), recentFailures: jobs.filter((j) => j.state === 'failed').slice(0, 5).map(json) },
+            jobs: { counts: counts() },
           })
         if (path === '/admin/youtube/auth') return send(res, 200, { url: 'https://accounts.google.com/' })
-        if (path === '/admin/kinds') return send(res, 200, KINDS)
+        if (path === '/api/v2/job-kinds' && method === 'GET')
+          return send(res, 200, Object.entries(KINDS).map(([name, k]) => ({
+            name, description: k.description ?? '', steps: k.steps, pause_before: k.manualSteps,
+            cancel_mode: k.cooperative ? 'cooperative' : 'interrupt', max_attempts: 3,
+          })))
 
         // ---- VOD list (every VOD, hidden and merged ones too) ----
         if (path === '/admin/vods' && method === 'GET') {
@@ -614,73 +633,95 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
           return send(res, 200, { path: `${area}/${name}`, bytes: f.bytes, files: f.files })
         }
 
-        if (path === '/admin/jobs' && method === 'GET') {
-          const state = url.searchParams.get('state')
-          const wanted = state ? state.split(',').flatMap((x) => GROUPS[x] ?? [x]) : null
-          const vodId = url.searchParams.get('vodId')
+        // ---- jobs: vex-platform's /api/v2/jobs ----
+        if (path === '/api/v2/jobs' && method === 'GET') {
+          const wanted = url.searchParams.getAll('state').map(v2State)
+          const subject = url.searchParams.get('subject')
           const kind = url.searchParams.get('kind')
-          const before = Number(url.searchParams.get('before')) || Infinity
-          const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 500)
-          const data = jobs
-            .filter((j) => j.id < before && (!wanted || wanted.includes(j.state)) && (!vodId || j.vodId === vodId) && (!kind || j.kind === kind))
-            .slice(0, limit)
-          return send(res, 200, { counts: counts(), data: data.map(json) })
+          const before = Number(url.searchParams.get('cursor')) || Infinity
+          const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 200)
+          const rows = jobs.filter((j) => j.id < before && (!wanted.length || wanted.includes(j.state)) && (!subject || (j.vodId && `vod:${j.vodId}` === subject)) && (!kind || j.kind === kind))
+          const items = rows.slice(0, limit)
+          return send(res, 200, { items: items.map(v2Job), next_cursor: rows.length > limit ? String(items[items.length - 1]!.id) : null })
         }
-        if (path === '/admin/jobs' && method === 'POST') {
+        if (path === '/api/v2/jobs' && method === 'POST') {
           const kind = String(b.kind ?? '')
-          if (!KINDS[kind]) return fail(res, 400, `Unknown kind ${kind}`)
+          if (!KINDS[kind]) return problem(res, 422, 'invalid', 'Invalid request', [{ loc: ['body', 'kind'], msg: `unknown kind ${kind}`, type: 'value_error' }])
+          const subject = b.subject == null ? null : String(b.subject)
+          if (subject && !/^vod:\d+$/.test(subject)) return problem(res, 422, 'invalid', 'Invalid request', [{ loc: ['body', 'subject'], msg: 'expected vod:<id>', type: 'value_error' }])
           const steps = KINDS[kind]!.steps
-          const from = typeof b.fromStep === 'string' && b.fromStep ? steps.indexOf(b.fromStep) : 0
-          if (from < 0) return fail(res, 400, `Unknown step ${b.fromStep}`)
-          const job = add(kind, b.vodId ? String(b.vodId) : null, b.paused ? 'paused' : 'queued', from, 0, {
+          const from = typeof b.step === 'string' && b.step ? steps.indexOf(b.step) : 0
+          if (from < 0) return problem(res, 422, 'invalid', 'Invalid request', [{ loc: ['body', 'step'], msg: `not a step of ${kind}`, type: 'value_error' }])
+          const job = add(kind, subject ? subject.slice(4) : null, b.paused ? 'paused' : 'queued', from, 0, {
             payload: (b.payload as Record<string, unknown>) ?? {},
-            pauseBefore: Array.isArray(b.pauseBefore) ? (b.pauseBefore as string[]) : null,
+            pauseBefore: Array.isArray(b.pause_before) ? (b.pause_before as string[]) : null,
+            actor: { kind: 'user', id: s.user?.id ?? null, login: s.user?.login ?? null, via: 'session' },
           })
-          return ok(res, `Job ${job.id} ${job.kind} ${job.state} at step ${job.step}`, job)
+          return send(res, 201, v2Job(job))
         }
 
-        const m = /^\/admin\/jobs\/(\d+)(?:\/([\w-]+))?$/.exec(path)
+        const m = /^\/api\/v2\/jobs\/(\d+)(?:\/([\w-]+))?$/.exec(path)
         const job = m ? jobs.find((j) => j.id === Number(m[1])) : undefined
-        if (m && !job) return fail(res, 404, 'No such job')
+        if (m && !job) return problem(res, 404, 'not_found', `No job ${m[1]}`)
         if (m && job) {
           const action = m[2]
-          if (!action && method === 'GET') return send(res, 200, json(job))
+          const conflict = (why: string) => problem(res, 409, 'job_conflict', `Job ${job.id} is ${v2Job(job).state}; ${why}`)
+          const done = () => {
+            job.updatedAt = iso()
+            return send(res, 200, v2Job(job))
+          }
+          if (!action && method === 'GET') return send(res, 200, v2Job(job))
           if (!action && method === 'PATCH') {
-            if ('pauseBefore' in b) job.pauseBefore = (b.pauseBefore as string[] | null) ?? null
-            if ('pauseNext' in b) job.pauseNext = !!b.pauseNext
-            return send(res, 200, json(job))
+            if (!['queued', 'running', 'paused'].includes(job.state)) return conflict('only unfinished jobs can be changed')
+            if ('pause_before' in b) job.pauseBefore = (b.pause_before as string[] | null) ?? null
+            if ('pause_next' in b) job.pauseNext = !!b.pause_next
+            return done()
           }
-          if (action === 'events') {
-            const after = Number(url.searchParams.get('after')) || 0
-            const data = (events.get(job.id) ?? []).filter((e) => e.seq > after).slice(0, 500)
-            return send(res, 200, { data, next: data.length ? data[data.length - 1]!.seq : after })
+          if (action === 'events' && method === 'GET') {
+            // The cursor is the last event id served; next_cursor is never null, so the page can keep following.
+            const after = Number(url.searchParams.get('cursor')) || 0
+            const limit = Math.min(Number(url.searchParams.get('limit')) || 200, 1000)
+            const items = (events.get(job.id) ?? []).filter((e) => e.seq > after).slice(0, limit)
+              .map(({ seq: id, ...e }) => ({ id, ...e }))
+            return send(res, 200, { items, next_cursor: String(items.length ? items[items.length - 1]!.id : after) })
           }
+          if (method !== 'POST') return problem(res, 405, 'method_not_allowed', 'Method not allowed')
           if (action === 'pause') {
             if (job.state === 'queued') job.state = 'paused'
             else if (job.state === 'running') job.pauseNext = true
-            else return fail(res, 409, `Job is ${job.state}; only queued or running jobs can be paused`)
+            else return conflict('only queued or running jobs can be paused')
             log(job, 'Pause requested', 'warning')
-            return ok(res, job.state === 'paused' ? `Job ${job.id} paused at step ${job.step}` : `Job ${job.id} will pause when step ${job.step} finishes`, job)
+            return done()
           }
           if (action === 'resume') {
-            if (job.state !== 'paused') return fail(res, 409, `Job is ${job.state}; only paused jobs can be resumed`)
+            if (job.state !== 'paused') return conflict('only paused jobs can be resumed')
             job.state = 'queued'
             job.pauseNext = !!b.once
             log(job, 'Resumed')
-            return ok(res, `Job ${job.id} resumed at step ${job.step}`, job)
+            return done()
           }
           if (action === 'retry') {
+            if (!['failed', 'cancelled'].includes(job.state)) return conflict('only failed or cancelled jobs can be retried')
+            if (typeof b.step === 'string' && b.step) {
+              if (!KINDS[job.kind]!.steps.includes(b.step)) return problem(res, 422, 'invalid', `${b.step} is not a step of ${job.kind}`)
+              job.step = b.step
+            }
             job.state = 'queued'
             job.attempts++
             job.lastError = null
-            log(job, 'Retried')
-            return ok(res, `Job ${job.id} re-queued from step ${job.step}`, job)
+            log(job, `Retried from ${job.step}`)
+            return done()
           }
           if (action === 'cancel') {
-            if (!['queued', 'paused', 'running'].includes(job.state)) return fail(res, 409, `Job is ${job.state}`)
-            job.state = 'cancelled'
-            log(job, 'Cancelled', 'warning')
-            return ok(res, `Job ${job.id} cancelled`, job)
+            if (!['queued', 'paused', 'running'].includes(job.state)) return conflict('only unfinished jobs can be cancelled')
+            if (job.state === 'running' && KINDS[job.kind]!.cooperative) {
+              job.cancelRequested = true
+              log(job, 'Cancel requested', 'warning')
+            } else {
+              job.state = 'cancelled'
+              log(job, 'Cancelled', 'warning')
+            }
+            return done()
           }
         }
         // ---- VODs ----
@@ -837,7 +878,18 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
           // The cursor is opaque to the page; here it is just the last id served.
           const before = Number(url.searchParams.get('cursor')) || Infinity
           const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 500)
-          const rows = audit.filter((a) => (a.id as number) < before)
+          const p = (k: string) => url.searchParams.get(k)?.trim() || ''
+          // action and target: a prefix ending in . or :, else exact.
+          const match = (v: string, want: string) => !want || (/[.:]$/.test(want) ? v.startsWith(want) : v === want)
+          const actor = p('actor').replace(/^@/, '').toLowerCase()
+          const who = actor === 'me' ? (s.user?.login ?? '').toLowerCase() : actor
+          const rows = audit.filter((a) =>
+            (a.id as number) < before &&
+            match(String(a.action), p('action')) &&
+            match(String(a.target ?? ''), p('target')) &&
+            (!p('actor_kind') || a.actor_kind === p('actor_kind')) &&
+            (!p('outcome') || a.outcome === p('outcome')) &&
+            (!actor || String(a.actor_login ?? '').toLowerCase() === who))
           const items = rows.slice(0, limit)
           return send(res, 200, { items, next_cursor: rows.length > limit ? String(items[items.length - 1]!.id) : null })
         }

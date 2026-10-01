@@ -7,7 +7,7 @@ import {
 } from '@vexoulz/ui'
 import { computed, onMounted, ref } from 'vue'
 import type { StorageFolder, StorageView } from '@/admin/api'
-import { bytes } from '@/admin/format'
+import { bytes } from '@vexoulz/platform-web'
 import ManageShell from '@/admin/ManageShell.vue'
 import { admin } from '@/admin/session'
 import { errorMessage } from '@/lib/errors'

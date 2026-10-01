@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { AdminApiError, AdminClient, jobActions, type Job } from '@/admin/api'
-import { stepPosition, stepStates } from '@/admin/format'
+import { AdminApiError, AdminClient } from '@/admin/api'
 
 function fakeFetch(status: number, body: unknown, headers: Record<string, string> = {}) {
   return vi.fn(async (_url: string, _init?: RequestInit) =>
@@ -10,16 +9,16 @@ function fakeFetch(status: number, body: unknown, headers: Record<string, string
 
 describe('AdminClient', () => {
   it('sends CSRF only on changes, and builds query strings without empty filters', async () => {
-    const fetch = fakeFetch(200, { counts: {}, data: [] })
+    const fetch = fakeFetch(200, { data: [], next: null })
     const c = new AdminClient({ base: '/backend-admin/', fetch })
     c.csrf = 'tok'
-    await c.jobs({ state: 'active', kind: '', vodId: undefined, before: 40 })
-    await c.pause(7)
+    await c.vods({ q: '', hidden: undefined, before: '40' })
+    await c.saveChat('7')
     const [url1, init1] = fetch.mock.calls[0]!
-    expect(url1).toBe('/backend-admin/admin/jobs?state=active&before=40')
+    expect(url1).toBe('/backend-admin/admin/vods?before=40')
     expect((init1!.headers as Record<string, string>)['x-csrf-token']).toBeUndefined()
     const [url2, init2] = fetch.mock.calls[1]!
-    expect(url2).toBe('/backend-admin/admin/jobs/7/pause')
+    expect(url2).toBe('/backend-admin/admin/logs')
     expect(init2!.method).toBe('POST')
     expect((init2!.headers as Record<string, string>)['x-csrf-token']).toBe('tok')
   })
@@ -63,31 +62,6 @@ describe('AdminClient', () => {
   })
 })
 
-const job = (over: Partial<Job>): Job => ({
-  id: 1, kind: 'archive', vodId: '1', state: 'running', step: 'split', attempts: 1, lastError: null, payload: {},
-  notBefore: null, pauseBefore: null, pauseNext: false, steps: ['capture', 'split', 'upload'], createdAt: null, updatedAt: null,
-  ...over,
-})
-
-describe('job helpers', () => {
-  it('marks steps before, at and after the current one', () => {
-    expect(stepStates(job({ pauseBefore: ['upload'] }))).toEqual([
-      { name: 'capture', status: 'done', pauseBefore: false },
-      { name: 'split', status: 'running', pauseBefore: false },
-      { name: 'upload', status: 'todo', pauseBefore: true },
-    ])
-    expect(stepStates(job({ state: 'done', step: null })).every((s) => s.status === 'done')).toBe(true)
-    expect(stepPosition(job({ state: 'failed', step: 'upload' }))).toEqual({ index: 2, total: 3 })
-  })
-
-  it('offers only the actions the worker allows', () => {
-    expect(jobActions({ state: 'paused' })).toEqual({ pause: false, resume: true, retry: false, cancel: true })
-    expect(jobActions({ state: 'done' })).toEqual({ pause: false, resume: false, retry: false, cancel: false })
-    expect(jobActions({ state: 'failed' }).retry).toBe(true)
-  })
-
-})
-
 describe('AdminClient: VODs, games, settings and storage', () => {
   it('lists VODs with only the filters given, and patches, reads and replaces games', async () => {
     const fetch = fakeFetch(200, { data: [], next: null })
@@ -127,17 +101,9 @@ describe('AdminClient: VODs, games, settings and storage', () => {
     ])
   })
 
-  it('reads the audit log from /api/v2 by cursor, and takes a problem detail as the message', async () => {
-    const fetch = fakeFetch(200, { items: [], next_cursor: null })
-    const c = new AdminClient({ base: '/backend-admin', fetch })
-    await c.audit({ limit: 50 })
-    await c.audit({ cursor: 'abc', limit: 50 })
-    expect(fetch.mock.calls.map(([url]) => url)).toEqual([
-      '/backend-admin/api/v2/audit?limit=50',
-      '/backend-admin/api/v2/audit?cursor=abc&limit=50',
-    ])
+  it('takes a problem detail as the message', async () => {
     const bad = new AdminClient({ base: '', fetch: fakeFetch(400, { type: 'about:blank', status: 400, code: 'bad_cursor', detail: 'not a cursor' }) })
-    const err = await bad.audit({ cursor: 'x' }).catch((e: unknown) => e)
+    const err = await bad.vods({ before: 'x' }).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(AdminApiError)
     expect((err as AdminApiError).message).toBe('not a cursor')
   })

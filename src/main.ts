@@ -3,9 +3,13 @@ import '@vexoulz/ui/style.css'
 
 import { AccountProgressStore } from '@vexoulz/vods-core'
 import { createVods } from '@vexoulz/vods-core/vue'
-import { VxBuild } from '@vexoulz/ui'
+import { VxBuild, useToast } from '@vexoulz/ui'
+import { createPlatformUi } from '@vexoulz/platform-web/vue'
 import { createApp, watch } from 'vue'
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory, RouterLink } from 'vue-router'
+
+import '@vexoulz/platform-web/style.css'
+import './styles/platform.css'
 
 import App from './App.vue'
 import { answerOf, recall, remember, shouldCheck } from './admin/quiet'
@@ -107,4 +111,18 @@ createApp(App)
   .use(VxBuild, { commit: __COMMIT__ })
   .use(account)
   .use(createVods(vodsConfig, { progress }))
+  // The shared jobs, audit and chat-line components: where a job or a subject (vod:<id>, job:<id>) lives, and toasts.
+  .use(
+    createPlatformUi({
+      link: RouterLink,
+      jobHref: (id) => `/manage/jobs/${id}`,
+      subjectHref: (s) => {
+        const m = /^(vod|job):(.+)$/.exec(s)
+        if (!m) return null
+        return m[1] === 'vod' ? `/manage/vods/${encodeURIComponent(m[2]!)}` : `/manage/jobs/${encodeURIComponent(m[2]!)}`
+      },
+      notify: (msg, kind) => useToast().show(msg, { kind, duration: kind === 'error' ? 5000 : 3000 }),
+      appName: 'worker',
+    }),
+  )
   .mount('#app')

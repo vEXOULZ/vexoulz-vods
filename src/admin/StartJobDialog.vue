@@ -1,12 +1,12 @@
 <script setup lang="ts">
-// Start any job kind the worker knows (from /admin/kinds): pick the kind, the VOD, where to start and where to pause.
+// Start any job kind the worker knows (GET /api/v2/job-kinds): pick the kind, the VOD, where to start and where to
+// pause. Queued with POST /api/v2/jobs, the VOD as its `vod:<id>` subject.
 import { VxButton, VxCallout, VxCheckbox, VxDialog, VxField, VxInput, VxSelect, type Option } from '@vexoulz/ui'
 import { computed, ref, watch } from 'vue'
-import type { JobKind } from './api'
-import { admin } from './session'
-import { errorMessage } from '@/lib/errors'
+import { errorText, type JobKindOut } from '@vexoulz/platform-web'
+import { platform, vodSubject } from './platform'
 
-const props = defineProps<{ kinds: Record<string, JobKind>; vodId?: string }>()
+const props = defineProps<{ kinds: JobKindOut[]; vodId?: string }>()
 const emit = defineEmits<{ started: [jobId: number] }>()
 const open = defineModel<boolean>('open', { default: false })
 
@@ -20,25 +20,37 @@ const busy = ref(false)
 const error = ref<string | null>(null)
 
 const kindOptions = computed<Option<string>[]>(() =>
-  Object.entries(props.kinds).map(([k, v]) => ({ value: k, label: k, sub: `${v.steps.length} steps` })),
+  props.kinds.map((k) => ({ value: k.name, label: k.name, sub: k.description || `${k.steps.length} steps` })),
 )
-const steps = computed(() => props.kinds[kind.value]?.steps ?? [])
+const kindInfo = computed(() => props.kinds.find((k) => k.name === kind.value))
+const steps = computed(() => kindInfo.value?.steps ?? [])
 const stepOptions = computed<Option<string>[]>(() => [{ value: '', label: 'First step' }, ...steps.value.map((s) => ({ value: s, label: s }))])
 
-watch(open, (v) => {
-  if (!v) return
-  error.value = null
-  vodId.value = props.vodId ?? ''
-  if (!props.kinds[kind.value]) kind.value = Object.keys(props.kinds)[0] ?? ''
-})
+// Immediate: the page can load with the dialog already open (?new=1).
 watch(
-  [kind, () => props.kinds],
-  () => {
-    fromStep.value = ''
-    pauseBefore.value = [...(props.kinds[kind.value]?.manualSteps ?? [])]
+  open,
+  (v) => {
+    if (!v) return
+    error.value = null
+    vodId.value = props.vodId ?? ''
   },
   { immediate: true },
 )
+watch(
+  [kind, () => props.kinds],
+  () => {
+    // The kinds can arrive after the dialog opened.
+    if (!kindInfo.value && props.kinds.length) kind.value = props.kinds[0]!.name
+    fromStep.value = ''
+    pauseBefore.value = [...(kindInfo.value?.pause_before ?? [])]
+  },
+  { immediate: true },
+)
+
+const customPauses = computed(() => {
+  const own = [...pauseBefore.value].sort().join()
+  return own !== [...(kindInfo.value?.pause_before ?? [])].sort().join()
+})
 
 function togglePause(step: string, on: boolean) {
   pauseBefore.value = on ? [...pauseBefore.value, step] : pauseBefore.value.filter((s) => s !== step)
@@ -59,18 +71,18 @@ async function submit() {
   busy.value = true
   error.value = null
   try {
-    const res = await admin.launch({
+    const job = await platform.enqueue({
       kind: kind.value,
-      vodId: vodId.value.trim() || undefined,
+      subject: vodId.value.trim() ? vodSubject(vodId.value.trim()) : undefined,
       payload: payload.value.trim() ? JSON.parse(payload.value) : undefined,
-      fromStep: fromStep.value || undefined,
-      pauseBefore: pauseBefore.value,
+      step: fromStep.value || undefined,
+      // Only when it differs from the kind's, so the run keeps following the kind's gates.
+      pause_before: customPauses.value ? pauseBefore.value : undefined,
       paused: paused.value,
     })
-    if (res.jobId != null) emit('started', res.jobId)
-    else open.value = false
+    emit('started', job.id)
   } catch (e) {
-    error.value = errorMessage(e)
+    error.value = errorText(e)
   } finally {
     busy.value = false
   }
