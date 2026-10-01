@@ -245,9 +245,16 @@ watch(time, (t) => {
   const i = streams.value.findIndex((s, k) => k > 0 && prev < s.start && t >= s.start)
   if (i > 0) openHandoff(i)
 })
+/** Just after the timer is stopped, while its button can't continue yet (a double click shouldn't go on). */
+const grace = ref(false)
+let graceTimer: ReturnType<typeof setTimeout> | undefined
 function stopCountdown() {
+  if (countdown.value === null) return
   clearInterval(countdownTimer)
   countdown.value = null
+  grace.value = true
+  clearTimeout(graceTimer)
+  graceTimer = setTimeout(() => (grace.value = false), 500)
 }
 function openHandoff(i: number) {
   handoff.value = i
@@ -260,11 +267,14 @@ function openHandoff(i: number) {
   }, 100)
 }
 function closeHandoff(play: boolean) {
-  stopCountdown()
+  clearInterval(countdownTimer)
+  clearTimeout(graceTimer)
+  countdown.value = null
+  grace.value = false
   handoff.value = null
   if (play) wp?.play()
 }
-onUnmounted(stopCountdown)
+onUnmounted(() => (clearInterval(countdownTimer), clearTimeout(graceTimer)))
 const handoffCard = computed(() => {
   const i = handoff.value
   if (i === null) return null
@@ -329,29 +339,40 @@ useShortcuts(() => shortcuts.value)
             </div>
             <div v-else-if="handoffCard" class="unavail" role="dialog" aria-label="Next stream">
               <div class="vx-panel un-card handoff">
-                <div class="vx-eyebrow">End of {{ handoffCard.from.mark }} · {{ handoffCard.from.sub }}</div>
-                <b><span class="vx-mono smark-next">{{ handoffCard.to.mark }}</span> {{ handoffCard.to.title }}</b>
-                <p class="vx-muted">Next stream, from {{ handoffCard.to.sub }}.</p>
+                <div class="handoff-head">
+                  <div class="handoff-text">
+                    <div class="vx-eyebrow">End of {{ handoffCard.from.mark }} · {{ handoffCard.from.sub }}</div>
+                    <b><span class="vx-mono smark-next">{{ handoffCard.to.mark }}</span> {{ handoffCard.to.title }}</b>
+                    <p class="vx-muted">Next stream, from {{ handoffCard.to.sub }}.</p>
+                  </div>
+                  <!-- Stays (dimmed) once stopped, so the card doesn't change size. -->
+                  <div
+                    class="ring"
+                    :class="{ off: countdown === null }"
+                    role="timer"
+                    :aria-label="countdown !== null ? `Continuing in ${Math.ceil(countdown)} seconds` : 'Timer stopped'"
+                  >
+                    <svg viewBox="0 0 48 48" aria-hidden="true">
+                      <circle class="ring-track" cx="24" cy="24" r="21" pathLength="1" />
+                      <circle
+                        v-if="countdown !== null"
+                        class="ring-left"
+                        cx="24"
+                        cy="24"
+                        r="21"
+                        pathLength="1"
+                        :stroke-dashoffset="1 - countdown / AUTO_CONTINUE"
+                      />
+                    </svg>
+                    <span class="ring-n vx-mono" aria-hidden="true">{{ countdown !== null ? Math.ceil(countdown) : '–' }}</span>
+                  </div>
+                </div>
                 <div class="un-actions">
-                  <VxButton variant="primary" :label="countdown !== null ? `Continue (in ${Math.ceil(countdown)} seconds)` : 'Continue'" @click="closeHandoff(true)">
-                    Continue
-                    <span class="ring" aria-hidden="true">
-                      <template v-if="countdown !== null">
-                        <svg viewBox="0 0 20 20">
-                          <circle class="ring-track" cx="10" cy="10" r="8.5" pathLength="1" />
-                          <circle class="ring-left" cx="10" cy="10" r="8.5" pathLength="1" :stroke-dashoffset="1 - countdown / AUTO_CONTINUE" />
-                        </svg>
-                        <span class="ring-n vx-mono">{{ Math.ceil(countdown) }}</span>
-                      </template>
-                      <template v-else>→</template>
-                    </span>
-                  </VxButton>
+                  <!-- One button: stops the timer, then (after a short grace, against a double click) continues. -->
+                  <VxButton v-if="countdown !== null" variant="primary" class="go" @click="stopCountdown">Stop timer</VxButton>
+                  <VxButton v-else variant="primary" class="go" :disabled="grace" @click="closeHandoff(true)">Continue →</VxButton>
                   <VxButton :to="handoffCard.from.finish" :title="`${handoffCard.from.title}, from where this playthrough leaves it`">
                     Finish {{ handoffCard.from.mark }} on its VOD ↗
-                  </VxButton>
-                  <!-- Kept (greyed out) once stopped, so the card doesn't change size. -->
-                  <VxButton variant="ghost" class="stop" :disabled="countdown === null" @click="stopCountdown">
-                    {{ countdown === null ? 'Timer stopped' : 'Stop timer' }}
                   </VxButton>
                 </div>
               </div>
@@ -549,13 +570,16 @@ useShortcuts(() => shortcuts.value)
 .un-card p { font-size: 13px; line-height: 1.5; margin: 0; }
 .un-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
 .smark-next { color: var(--vx-accent); margin-right: 4px; }
-.ring { position: relative; display: inline-grid; place-items: center; width: 20px; height: 20px; margin-left: 6px; }
+.handoff-head { display: flex; align-items: center; gap: 16px; }
+.handoff-text { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }
+.ring { position: relative; flex: none; display: grid; place-items: center; width: 56px; height: 56px; color: var(--vx-accent); }
+.ring.off { color: inherit; opacity: 0.4; }
 .ring svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
-.ring circle { fill: none; stroke: currentColor; stroke-width: 2; }
-.ring-track { opacity: 0.25; }
+.ring circle { fill: none; stroke: currentColor; stroke-width: 3; }
+.ring-track { opacity: 0.2; }
 .ring-left { stroke-dasharray: 1; stroke-linecap: round; transition: stroke-dashoffset 0.1s linear; }
-.ring-n { font-size: 10px; line-height: 1; }
-.stop { min-width: 15ch; }
+.ring-n { font-size: 18px; line-height: 1; }
+.go { min-width: 12ch; justify-content: center; }
 
 .controls { border-top: 1px solid var(--vx-line); background: rgb(0 0 0 / 0.7); }
 .peek {
