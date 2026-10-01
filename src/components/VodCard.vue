@@ -1,13 +1,15 @@
 <script setup lang="ts">
 // One VOD in the list: YouTube thumbnail with duration, fanned game posters (a button: opens the chapters, each a
 // link to that point), chapter strip, and where you stopped (from watch progress) with a bar showing how much
-// you've seen. Thumbnail and title link to the VOD; the posters sit outside those links.
+// you've seen. Thumbnail and title link to the VOD; the posters sit outside those links. A tagged VOD (a playthrough)
+// shows its tags as chips by the date.
 import { gamePalette, learnGameColors, VxChapterBar, VxChip, VxLink, VxMenuItem, VxPlaceholder, VxPopover, VxPosters } from '@vexoulz/ui'
-import { boxArt, toClock, watchPath, type Progress, type Vod } from '@vexoulz/vods-core'
+import { boxArt, isFinished, toClock, watchPath, type Progress, type Vod } from '@vexoulz/vods-core'
 import { computed, watchEffect } from 'vue'
 import { useThumbnail } from '@/composables/useThumbnail'
 import { cutNote } from '@/lib/cuts'
 import { gamesWithArt } from '@/lib/art'
+import { tagLabel } from '@/lib/listQuery'
 
 const props = defineProps<{ vod: Vod; progress?: Progress | null }>()
 
@@ -19,6 +21,8 @@ const date = computed(() =>
   props.vod.createdAt.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }),
 )
 const to = computed(() => watchPath(props.vod, props.progress?.t))
+// Finished before the VOD grew (a playthrough's new stream): `t` is where the new part starts.
+const grown = computed(() => !!props.progress && isFinished(props.progress))
 const watched = computed(() => (props.progress && props.vod.duration ? Math.min(1, props.progress.t / props.vod.duration) : 0))
 const title = computed(() => props.vod.title || 'Untitled stream')
 
@@ -35,8 +39,11 @@ const { src: thumb, srcset: thumbSet, onLoad: thumbLoaded, onError: thumbFailed 
         </div>
         <span class="dur vx-mono">{{ toClock(vod.duration) }}</span>
         <template v-if="progress">
-          <span class="resume vx-mono" :title="`You stopped at ${toClock(progress.t)}. Opens the VOD right there.`">
-            ▶ {{ toClock(progress.t) }}
+          <span
+            class="resume vx-mono"
+            :title="grown ? `New since you finished it, from ${toClock(progress.t)}. Opens the VOD right there.` : `You stopped at ${toClock(progress.t)}. Opens the VOD right there.`"
+          >
+            ▶ {{ grown ? 'New ' : '' }}{{ toClock(progress.t) }}
           </span>
           <span class="watched" :style="{ width: `${watched * 100}%` }"></span>
         </template>
@@ -80,6 +87,7 @@ const { src: thumb, srcset: thumbSet, onLoad: thumbLoaded, onError: thumbFailed 
       <span class="title">{{ title }}</span>
       <span class="meta">
         <span class="vx-mono date">{{ date }}</span>
+        <VxChip v-for="t in vod.tags" :key="t" class="tag">{{ tagLabel(t) }}</VxChip>
         <span v-if="games.length" class="games">{{ games.map((g) => g.name).join(', ') }}</span>
       </span>
     </VxLink>
@@ -115,7 +123,7 @@ const { src: thumb, srcset: thumbSet, onLoad: thumbLoaded, onError: thumbFailed 
 .title { color: var(--vx-ink); font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
 .text:hover .title, .text:focus-visible .title, .card:has(.thumb-link:hover) .title { color: var(--vx-accent); }
 .meta { display: flex; gap: 6px; align-items: center; min-width: 0; font-size: 12px; color: var(--vx-muted); }
-.date { white-space: nowrap; }
+.date, .tag { white-space: nowrap; flex: none; }
 .games { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .games::before { content: '·'; margin-right: 6px; }
 </style>

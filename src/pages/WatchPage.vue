@@ -1,9 +1,9 @@
 <script setup lang="ts">
 // /vods/:id, /live/:id and /youtube/:id. `?t=` is VOD time (wins), `?part=` starts a part from its beginning;
-// with neither, playback resumes where this browser left off. A VOD merged into another one sends you to the same
-// moment in that one.
+// with neither, playback resumes where this browser left off. A VOD merged into another one, or replaced by a
+// synthetic VOD (a merge or split that keeps the original), sends you to the same moment in that one.
 import { useToast, VxButton, VxCallout, VxEmptyState, VxSkeleton } from '@vexoulz/ui'
-import { isResumable, parseTimestamp, toClock, toHMS, type Position, type UploadType } from '@vexoulz/vods-core'
+import { isFinished, isResumable, parseTimestamp, redirectTarget, resumeProgress, toClock, toHMS, type Position, type UploadType } from '@vexoulz/vods-core'
 import { useVodsContext, useWatch } from '@vexoulz/vods-core/vue'
 import { computed, shallowRef, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -16,18 +16,20 @@ const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 const { progress } = useVodsContext()
-const { vod, timeline, uploadType, download, loading, notFound, error, reload } = useWatch(
+const { vod, sources, timeline, segments, uploadType, download, loading, notFound, error, reload } = useWatch(
   () => props.id,
   () => props.type,
 )
 
-// Old links to the later half of a merged broadcast: same route type (both halves had the same kind of uploads),
-// same moment, and this browser's progress on the old id carries over.
-const merged = computed(() => vod.value?.mergedInto ?? null)
+// Old links to a VOD that now plays inside another one: the later half of a merged broadcast, or an original a
+// synthetic VOD replaces (merge or split). Same route type, same moment, and this browser's progress on the old id
+// carries over.
+const moved = computed(() => !!vod.value && redirectTarget(vod.value, 0) !== null)
 watch(
-  merged,
+  moved,
   async (m) => {
-    if (!m) return
+    const v = vod.value
+    if (!m || !v) return
     const from = props.id
     let t = parseTimestamp(typeof route.query.t === 'string' ? route.query.t : null)
     if (!t) {
@@ -36,8 +38,8 @@ watch(
     }
     if (props.id !== from) return
     const base = route.path.split('/')[1] || 'vods'
-    const at = m.offset + (t ?? 0)
-    router.replace({ path: `/${base}/${encodeURIComponent(m.id)}`, query: at > 0 ? { t: `${Math.floor(at)}s` } : {}, hash: route.hash })
+    const to = redirectTarget(v, t ?? 0)!
+    router.replace({ path: `/${base}/${encodeURIComponent(to.id)}`, query: to.t > 0 ? { t: `${Math.floor(to.t)}s` } : {}, hash: route.hash })
   },
   { immediate: true },
 )
@@ -47,15 +49,17 @@ watch(
   timeline,
   async (tl) => {
     start.value = null
-    if (!tl || tl.isEmpty || merged.value) return
+    if (!tl || tl.isEmpty || moved.value) return
     const t = parseTimestamp(typeof route.query.t === 'string' ? route.query.t : null)
     const part = Number(route.query.part) || null
     if (!t && !part) {
       const saved = await progress.get(props.id).catch(() => null)
       if (tl !== timeline.value) return
-      if (saved && isResumable(saved)) {
-        start.value = tl.locate(saved.t)
-        toast.show(`Resumed at ${toClock(saved.t)}`, { kind: 'info' })
+      // Finished before it grew (a playthrough's new stream): picks up where the new part starts.
+      const at = resumeProgress(saved, vod.value?.duration)
+      if (saved && at) {
+        start.value = tl.locate(at.t)
+        toast.show(isFinished(saved) ? `New since you finished it: from ${toClock(at.t)}` : `Resumed at ${toClock(at.t)}`, { kind: 'info' })
         return
       }
     }
@@ -72,6 +76,16 @@ const other = computed(() => {
   return v.uploads.some((u) => u.type === alt) ? `/${alt === 'vod' ? 'vods' : 'live'}/${v.id}` : null
 })
 
+/** A playthrough's parts are numbered within their stream: S1-P1, S1-P2, S2-P1… (a merge or split keeps P1, P2…). */
+const partLabel = computed(() => {
+  const seg = segments.value
+  if (!seg || vod.value?.synthetic?.supersedes) return undefined
+  return (i: number) => {
+    const at = seg.clipInStream(i)
+    return at ? `S${at.stream + 1}-P${at.part + 1}` : `P${i + 1}`
+  }
+})
+
 const shareUrl = (t: number) => `${location.origin}${route.path}?t=${toHMS(t)}`
 
 watchEffect(() => {
@@ -81,10 +95,13 @@ watchEffect(() => {
 
 <template>
   <WatchView
-    v-if="vod && timeline && start && !merged"
+    v-if="vod && timeline && start && !moved"
     :key="`${vod.id}:${uploadType}`"
     :vod="vod"
     :timeline="timeline"
+    :segments="segments"
+    :sources="sources"
+    :part-label="partLabel"
     :start="start"
     :download="download"
     :share-url="shareUrl"
@@ -98,7 +115,7 @@ watchEffect(() => {
       <template #actions><VxButton to="/vods" variant="primary">Browse VODs</VxButton></template>
     </VxEmptyState>
     <VxEmptyState
-      v-else-if="vod && timeline?.isEmpty && !merged"
+      v-else-if="vod && timeline?.isEmpty && !moved"
       title="Not on YouTube yet"
       :text="`“${vod.title}” has no ${uploadType === 'live' ? 'live' : 'VOD'} uploads yet. Chat replay needs a video to follow.`"
     >

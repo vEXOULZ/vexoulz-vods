@@ -2,6 +2,8 @@
 // Past broadcasts: one filter bar (All resets, title search, game dropdown with every game in the archive, date
 // range; all combinable and kept in the URL), a grid of cards, and "load more". On phones the bar wraps.
 // Unfiltered, the newest VOD also gets its own panel on top, with the most played games under it as filter shortcuts.
+// Tabs above the bar split the list by tag: plain VODs (merges and splits included) and playthroughs (one game across
+// streams, as one video); the filters apply within the tab.
 import {
   VxButton,
   VxCallout,
@@ -10,8 +12,9 @@ import {
   VxInput,
   VxPopover,
   VxSkeleton,
+  VxTabs,
 } from '@vexoulz/ui'
-import { isResumable, type GamePlayed, type Progress } from '@vexoulz/vods-core'
+import { resumeProgress, type GamePlayed, type Progress } from '@vexoulz/vods-core'
 import { useVods, useVodsContext } from '@vexoulz/vods-core/vue'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -20,7 +23,7 @@ import LatestVod from '@/components/LatestVod.vue'
 import MostPlayed from '@/components/MostPlayed.vue'
 import VodCard from '@/components/VodCard.vue'
 import { loadGamesPlayed } from '@/lib/gamesPlayed'
-import { hasFilters, parseListQuery, toApiFilter, toListQuery, type ListState } from '@/lib/listQuery'
+import { hasFilters, parseListQuery, TABS, toApiFilter, toListQuery, type ListState, type Tab } from '@/lib/listQuery'
 import { site, vodsConfig } from '@/vods.config'
 import VodsShell from '@/components/VodsShell.vue'
 import { watchDebounced } from '@/composables/watchDebounced'
@@ -79,8 +82,16 @@ const game = computed({
 function resetAll() {
   cancelSearch()
   titleDraft.value = ''
-  router.replace({ query: {} })
+  router.replace({ query: toListQuery({ ...parseListQuery({}), tab: state.value.tab }) })
 }
+
+// ---- tabs ----
+const tabOptions = TABS.map(({ value, label }) => ({ value, label }))
+const tab = computed({
+  get: () => state.value.tab,
+  set: (t: Tab | undefined) => go({ tab: t ?? 'vods' }, true),
+})
+const playthroughs = computed(() => state.value.tab === 'playthroughs')
 
 // ---- dates ----
 const dateFrom = ref(state.value.from)
@@ -100,14 +111,16 @@ const dateLabel = computed(() => {
 })
 
 // ---- resume positions ----
-const resumeAt = shallowRef(new Map<string, Progress>())
+const saved = shallowRef(new Map<string, Progress>())
 progress
   .list(500)
-  .then((all) => (resumeAt.value = new Map(all.filter((p) => isResumable(p)).map((p) => [p.vodId, p]))))
+  .then((all) => (saved.value = new Map(all.map((p) => [p.vodId, p]))))
   .catch(() => undefined)
+/** Where to pick each listed VOD up, if anywhere: one that grew since it was finished (a playthrough's new stream) at the new part. */
+const resume = computed(() => new Map(vods.value.map((v) => [v.id, resumeProgress(saved.value.get(v.id), v.duration)])))
 
 // ---- the latest VOD, highlighted on top when nothing is filtered (it stays in the grid too) ----
-const latest = computed(() => (!hasFilters(state.value) && shownFrom.value === 0 && vods.value.length ? vods.value[0]! : null))
+const latest = computed(() => (!playthroughs.value && !hasFilters(state.value) && shownFrom.value === 0 && vods.value.length ? vods.value[0]! : null))
 
 const countText = computed(() => `${(shownFrom.value + vods.value.length).toLocaleString()} of ${total.value.toLocaleString()}`)
 </script>
@@ -116,14 +129,15 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
   <VodsShell>
 
     <section v-if="latest" class="top">
-      <LatestVod :vod="latest" :progress="resumeAt.get(latest.id)" />
+      <LatestVod :vod="latest" :progress="resume.get(latest.id)" />
       <MostPlayed :games="games" :error="gamesError" @game="(g) => go({ game: g }, true)" @retry="fetchGames(true)" />
     </section>
 
     <div class="bar">
-      <h1 class="vx-display">Past broadcasts</h1>
+      <h1 class="vx-display">{{ playthroughs ? 'Playthroughs' : 'Past broadcasts' }}</h1>
+      <VxTabs v-model="tab" :options="tabOptions" label="Kind of VOD" class="tabs" />
       <div class="filters">
-        <VxButton :pressed="!hasFilters(state)" label="Show all VODs (clear every filter)" @click="resetAll">All</VxButton>
+        <VxButton :pressed="!hasFilters(state)" label="Clear every filter" @click="resetAll">All</VxButton>
         <VxInput v-model="titleDraft" class="search" type="search" placeholder="Search titles…" clearable>
           <template #icon>⌕</template>
         </VxInput>
@@ -153,7 +167,11 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
       </div>
     </div>
 
-    <VxEmptyState v-else-if="!vods.length" title="No VODs match" :text="hasFilters(state) ? 'Try another search or date range.' : 'Nothing archived yet.'">
+    <VxEmptyState
+      v-else-if="!vods.length"
+      :title="playthroughs ? 'No playthroughs match' : 'No VODs match'"
+      :text="hasFilters(state) ? 'Try another search or date range.' : playthroughs ? 'No playthroughs have been put together yet.' : 'Nothing archived yet.'"
+    >
       <template v-if="hasFilters(state)" #actions>
         <VxButton @click="resetAll">Clear filters</VxButton>
       </template>
@@ -161,7 +179,7 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
 
     <template v-else>
       <div class="grid">
-        <VodCard v-for="v in vods" :key="v.id" :vod="v" :progress="resumeAt.get(v.id)" />
+        <VodCard v-for="v in vods" :key="v.id" :vod="v" :progress="resume.get(v.id)" />
       </div>
       <div class="more">
         <VxButton v-if="hasMore" :loading="loading" @click="loadMore">Load {{ site.perPage }} more</VxButton>
@@ -174,6 +192,7 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
 <style scoped>
 .bar { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
 .bar h1 { font-size: 28px; }
+.tabs { align-self: flex-start; max-width: 100%; }
 .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .search { flex: 1 1 220px; max-width: 360px; }
 @container vx-site (max-width: 700px) {

@@ -3,11 +3,12 @@ import { hasFilters, parseListQuery, toApiFilter, toListQuery } from '@/lib/list
 
 describe('parseListQuery', () => {
   it('defaults an empty query', () => {
-    expect(parseListQuery({})).toEqual({ page: 1, title: '', game: '', from: '', to: '' })
+    expect(parseListQuery({})).toEqual({ tab: 'vods', page: 1, title: '', game: '', from: '', to: '' })
   })
 
   it('reads every filter and trims', () => {
     expect(parseListQuery({ title: ' chill ', game: 'Minecraft', from: '2025-01-02', to: '2025-02-03', page: '3' })).toEqual({
+      tab: 'vods',
       page: 3,
       title: 'chill',
       game: 'Minecraft',
@@ -39,6 +40,13 @@ describe('toListQuery', () => {
     const q = { title: 'x', game: 'Y', from: '2025-01-01', to: '2025-01-31', page: '2' }
     expect(toListQuery(parseListQuery(q))).toEqual(q)
   })
+
+  it('reads the tab, keeping it out of the URL on the default one', () => {
+    expect(parseListQuery({ tab: 'playthroughs' }).tab).toBe('playthroughs')
+    expect(parseListQuery({ tab: 'nope' }).tab).toBe('vods')
+    expect(toListQuery(parseListQuery({ tab: 'playthroughs', page: '2' }))).toEqual({ tab: 'playthroughs', page: '2' })
+    expect(toListQuery(parseListQuery({ tab: 'vods' }))).toEqual({})
+  })
 })
 
 describe('toApiFilter', () => {
@@ -49,13 +57,14 @@ describe('toApiFilter', () => {
   })
 
   it('omits empty filters', () => {
-    expect(toApiFilter(parseListQuery({}))).toEqual({ title: undefined, game: undefined, from: undefined, to: undefined })
+    expect(toApiFilter(parseListQuery({ tab: 'playthroughs' })).tag).toBe('compilation')
+    expect(toApiFilter(parseListQuery({}))).toEqual({ tag: undefined, title: undefined, game: undefined, from: undefined, to: undefined })
   })
 })
 
 describe('hasFilters', () => {
-  it('ignores the page', () => {
-    expect(hasFilters(parseListQuery({ page: '4' }))).toBe(false)
+  it('ignores the page and the tab', () => {
+    expect(hasFilters(parseListQuery({ page: '4', tab: 'playthroughs' }))).toBe(false)
     expect(hasFilters(parseListQuery({ game: 'A' }))).toBe(true)
   })
 })
