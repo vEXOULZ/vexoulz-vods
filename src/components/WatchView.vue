@@ -339,12 +339,10 @@ useShortcuts(() => shortcuts.value)
             </div>
             <div v-else-if="handoffCard" class="unavail" role="dialog" aria-label="Next stream">
               <div class="vx-panel un-card handoff">
-                <div class="handoff-head">
-                  <div class="handoff-text">
-                    <div class="vx-eyebrow">End of {{ handoffCard.from.mark }} · {{ handoffCard.from.sub }}</div>
-                    <b><span class="vx-mono smark-next">{{ handoffCard.to.mark }}</span> {{ handoffCard.to.title }}</b>
-                    <p class="vx-muted">Next stream, from {{ handoffCard.to.sub }}.</p>
-                  </div>
+                <div class="vx-eyebrow">End of {{ handoffCard.from.mark }} · {{ handoffCard.from.sub }}</div>
+                <b><span class="vx-mono smark-next">{{ handoffCard.to.mark }}</span> {{ handoffCard.to.title }}</b>
+                <p class="vx-muted">Next stream, from {{ handoffCard.to.sub }}.</p>
+                <div class="un-actions handoff-actions">
                   <!-- Stays (dimmed) once stopped, so the card doesn't change size. -->
                   <div
                     class="ring"
@@ -366,10 +364,8 @@ useShortcuts(() => shortcuts.value)
                     </svg>
                     <span class="ring-n vx-mono" aria-hidden="true">{{ countdown !== null ? Math.ceil(countdown) : '–' }}</span>
                   </div>
-                </div>
-                <div class="un-actions">
                   <!-- One button: stops the timer, then (after a short grace, against a double click) continues. -->
-                  <VxButton v-if="countdown !== null" variant="primary" class="go" @click="stopCountdown">Stop timer</VxButton>
+                  <VxButton v-if="countdown !== null" class="go stop" @click="stopCountdown">Stop timer</VxButton>
                   <VxButton v-else variant="primary" class="go" :disabled="grace" @click="closeHandoff(true)">Continue →</VxButton>
                   <VxButton :to="handoffCard.from.finish" :title="`${handoffCard.from.title}, from where this playthrough leaves it`">
                     Finish {{ handoffCard.from.mark }} on its VOD ↗
@@ -570,16 +566,17 @@ useShortcuts(() => shortcuts.value)
 .un-card p { font-size: 13px; line-height: 1.5; margin: 0; }
 .un-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
 .smark-next { color: var(--vx-accent); margin-right: 4px; }
-.handoff-head { display: flex; align-items: center; gap: 16px; }
-.handoff-text { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }
-.ring { position: relative; flex: none; display: grid; place-items: center; width: 56px; height: 56px; color: var(--vx-accent); }
+.handoff-actions { align-items: center; }
+.ring { position: relative; flex: none; display: grid; place-items: center; width: 44px; height: 44px; color: var(--vx-accent); }
 .ring.off { color: inherit; opacity: 0.4; }
 .ring svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
 .ring circle { fill: none; stroke: currentColor; stroke-width: 3; }
 .ring-track { opacity: 0.2; }
 .ring-left { stroke-dasharray: 1; stroke-linecap: round; transition: stroke-dashoffset 0.1s linear; }
-.ring-n { font-size: 18px; line-height: 1; }
+.ring-n { font-size: 16px; line-height: 1; }
 .go { min-width: 12ch; justify-content: center; }
+.go.stop { background: var(--vx-warn); border-color: var(--vx-warn); color: var(--vx-bg); font-weight: 600; backdrop-filter: none; }
+.go.stop:hover { filter: brightness(1.08); color: var(--vx-bg); }
 
 .controls { border-top: 1px solid var(--vx-line); background: rgb(0 0 0 / 0.7); }
 .peek {
