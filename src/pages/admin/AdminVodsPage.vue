@@ -1,11 +1,11 @@
 <script setup lang="ts">
-// /manage/vods?q=&hidden=: find a VOD to edit (GET /admin/vods, so hidden and merged ones too; a title or an id), and
-// add ones the monitor missed.
+// /manage/vods?q=&hidden=&synthetic=: find a VOD to edit (GET /api/v2/vods, so hidden, merged and synthetic ones too;
+// a title or an id), add ones the monitor missed, and make a synthetic one (a playthrough, say).
 import { VxButton, VxCallout, VxChip, VxDialog, VxField, VxInput, VxSegmented, VxSkeleton, VxTable, useToast, type Option, type TableColumn } from '@vexoulz/ui'
 import { toClock } from '@vexoulz/vods-core'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { AdminVodRow } from '@/admin/api'
+import type { VodListRow } from '@/admin/api'
 import ManageShell from '@/admin/ManageShell.vue'
 import { admin } from '@/admin/session'
 import { errorMessage } from '@/lib/errors'
@@ -23,17 +23,32 @@ const SHOWN: Option<Shown>[] = [
   { value: 'hidden', label: 'Hidden' },
 ]
 
+type Kind = 'all' | 'twitch' | 'synthetic'
+const KIND: Option<Kind>[] = [
+  { value: 'all', label: 'All' },
+  { value: 'twitch', label: 'Twitch' },
+  { value: 'synthetic', label: 'Synthetic' },
+]
+
 const query = computed(() => (typeof route.query.q === 'string' ? route.query.q : ''))
 const shown = computed<Shown>(() => (route.query.hidden === 'true' ? 'hidden' : route.query.hidden === 'false' ? 'shown' : 'all'))
+const kind = computed<Kind>(() => (route.query.synthetic === 'true' ? 'synthetic' : route.query.synthetic === 'false' ? 'twitch' : 'all'))
 const draft = ref(query.value)
-const setQuery = (q: string, s: Shown) =>
-  router.replace({ query: { ...(q ? { q } : {}), ...(s !== 'all' ? { hidden: String(s === 'hidden') } : {}) } })
-watchDebounced(draft, (v) => setQuery(v.trim(), shown.value), 300)
-const setShown = (s: Shown | undefined) => setQuery(query.value, s ?? 'all')
+const setQuery = (q: string, s: Shown, k: Kind) =>
+  router.replace({
+    query: {
+      ...(q ? { q } : {}),
+      ...(s !== 'all' ? { hidden: String(s === 'hidden') } : {}),
+      ...(k !== 'all' ? { synthetic: String(k === 'synthetic') } : {}),
+    },
+  })
+watchDebounced(draft, (v) => setQuery(v.trim(), shown.value, kind.value), 300)
+const setShown = (s: Shown | undefined) => setQuery(query.value, s ?? 'all', kind.value)
+const setKind = (k: Kind | undefined) => setQuery(query.value, shown.value, k ?? 'all')
 
 const idLike = computed(() => /^\d{6,}$/.test(query.value) ? query.value : null)
 
-const vods = ref<AdminVodRow[]>([])
+const vods = ref<VodListRow[]>([])
 const next = ref<string | null>(null)
 const loading = ref(false)
 const error = ref<unknown>(null)
@@ -46,16 +61,18 @@ async function load(more = false) {
   error.value = null
   try {
     const hidden = shown.value === 'all' ? undefined : shown.value === 'hidden'
-    const page = await admin.vods({ q: query.value || undefined, hidden, limit: PER_PAGE, before: more ? next.value ?? undefined : undefined }, mine.signal)
-    vods.value = more ? [...vods.value, ...page.data] : page.data
-    next.value = page.next
+    const synthetic = kind.value === 'all' ? undefined : kind.value === 'synthetic'
+    const cursor = more ? next.value ?? undefined : undefined
+    const page = await admin.vodList({ q: query.value || undefined, hidden, synthetic, limit: PER_PAGE, cursor }, mine.signal)
+    vods.value = more ? [...vods.value, ...page.items] : page.items
+    next.value = page.next_cursor
   } catch (e) {
     if (!mine.signal.aborted) error.value = e
   } finally {
     if (ctrl === mine) loading.value = false
   }
 }
-watch([query, shown], () => load(), { immediate: true })
+watch([query, shown, kind], () => load(), { immediate: true })
 const refresh = () => load()
 const more = () => load(true)
 
@@ -69,10 +86,14 @@ const rows = computed(() =>
   vods.value.map((v) => ({
     id: v.id,
     title: v.title ?? 'Untitled',
-    date: v.createdAt.slice(0, 10),
-    length: toClock(v.duration_seconds),
+    date: v.created_at.slice(0, 10),
+    length: v.duration_seconds == null ? '' : toClock(v.duration_seconds),
     hidden: v.hidden,
-    merged: v.merged_into,
+    merged: v.merged_into?.id ?? null,
+    synthetic: v.synthetic ? (v.synthetic.supersedes ? 'merge or split' : 'synthetic') : null,
+    tags: v.tags,
+    // A synthetic VOD is edited as its segments.
+    to: v.synthetic ? `/manage/synthetic/${encodeURIComponent(v.id)}` : `/manage/vods/${v.id}`,
   })),
 )
 
@@ -102,6 +123,7 @@ onMounted(() => (document.title = 'VODs · Manage · vods.vexoulz.net'))
 <template>
   <ManageShell title="VODs">
     <template #actions>
+      <VxButton to="/manage/synthetic/new">New synthetic VOD</VxButton>
       <VxButton variant="primary" @click="addId = ''; addOpen = true">Add from Twitch</VxButton>
     </template>
 
@@ -110,6 +132,7 @@ onMounted(() => (document.title = 'VODs · Manage · vods.vexoulz.net'))
         <template #icon>⌕</template>
       </VxInput>
       <VxSegmented :model-value="shown" :options="SHOWN" label="Visibility" @update:model-value="setShown" />
+      <VxSegmented :model-value="kind" :options="KIND" label="Kind" @update:model-value="setKind" />
       <VxButton v-if="idLike" :to="`/manage/vods/${idLike}`" variant="primary">Open VOD {{ idLike }}</VxButton>
     </div>
 
@@ -120,9 +143,11 @@ onMounted(() => (document.title = 'VODs · Manage · vods.vexoulz.net'))
     <div v-else-if="loading && !vods.length" class="sk" aria-busy="true"><VxSkeleton v-for="i in 6" :key="i" h="36px" /></div>
     <template v-else>
       <VxTable :columns="columns" :rows="rows" row-key="id" manual label="VODs" empty="No VODs match.">
-        <template #cell-id="{ row }"><RouterLink :to="`/manage/vods/${row.id}`">{{ row.id }}</RouterLink></template>
+        <template #cell-id="{ row }"><RouterLink :to="row.to">{{ row.id }}</RouterLink></template>
         <template #cell-title="{ row }">
-          <RouterLink :to="`/manage/vods/${row.id}`" class="title">{{ row.title }}</RouterLink>
+          <RouterLink :to="row.to" class="title">{{ row.title }}</RouterLink>
+          <VxChip v-if="row.synthetic" tone="accent" :title="row.synthetic === 'synthetic' ? 'Made of windows of other VODs' : 'Stands in for the VODs it was made of'">{{ row.synthetic }}</VxChip>
+          <VxChip v-for="t in row.tags" :key="t">{{ t }}</VxChip>
           <VxChip v-if="row.hidden" tone="warn" title="Gone from the public site">hidden</VxChip>
           <VxChip v-if="row.merged" :title="`Merged into ${row.merged}`">merged</VxChip>
         </template>
