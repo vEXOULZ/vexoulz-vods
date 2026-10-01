@@ -3,7 +3,7 @@
 // with neither, playback resumes where this browser left off. A VOD merged into another one, or replaced by a
 // synthetic VOD (a merge or split that keeps the original), sends you to the same moment in that one.
 import { useToast, VxButton, VxCallout, VxEmptyState, VxSkeleton } from '@vexoulz/ui'
-import { isResumable, parseTimestamp, supersededTarget, toClock, toHMS, type Position, type UploadType } from '@vexoulz/vods-core'
+import { isFinished, isResumable, parseTimestamp, resumeAt, supersededTarget, toClock, toHMS, type Position, type UploadType } from '@vexoulz/vods-core'
 import { useVodsContext, useWatch } from '@vexoulz/vods-core/vue'
 import { computed, shallowRef, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -54,9 +54,11 @@ watch(
     if (!t && !part) {
       const saved = await progress.get(props.id).catch(() => null)
       if (tl !== timeline.value) return
-      if (saved && isResumable(saved)) {
-        start.value = tl.locate(saved.t)
-        toast.show(`Resumed at ${toClock(saved.t)}`, { kind: 'info' })
+      // Finished before it grew (a playthrough's new stream): picks up where the new part starts.
+      const at = saved && vod.value ? resumeAt(saved, { duration: vod.value.duration }) : null
+      if (saved && at != null) {
+        start.value = tl.locate(at)
+        toast.show(isFinished(saved) ? `New since you finished it: from ${toClock(at)}` : `Resumed at ${toClock(at)}`, { kind: 'info' })
         return
       }
     }

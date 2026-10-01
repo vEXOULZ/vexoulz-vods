@@ -4,7 +4,7 @@
 // you've seen. Thumbnail and title link to the VOD; the posters sit outside those links. A tagged VOD (a playthrough)
 // shows its tags as chips by the date.
 import { gamePalette, learnGameColors, VxChapterBar, VxChip, VxLink, VxMenuItem, VxPlaceholder, VxPopover, VxPosters } from '@vexoulz/ui'
-import { boxArt, toClock, watchPath, type Progress, type Vod } from '@vexoulz/vods-core'
+import { boxArt, isFinished, toClock, watchPath, type Progress, type Vod } from '@vexoulz/vods-core'
 import { computed, watchEffect } from 'vue'
 import { useThumbnail } from '@/composables/useThumbnail'
 import { cutNote } from '@/lib/cuts'
@@ -21,6 +21,8 @@ const date = computed(() =>
   props.vod.createdAt.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }),
 )
 const to = computed(() => watchPath(props.vod, props.progress?.t))
+// Finished before the VOD grew (a playthrough's new stream): `t` is where the new part starts.
+const grown = computed(() => !!props.progress && isFinished(props.progress))
 const watched = computed(() => (props.progress && props.vod.duration ? Math.min(1, props.progress.t / props.vod.duration) : 0))
 const title = computed(() => props.vod.title || 'Untitled stream')
 
@@ -37,8 +39,11 @@ const { src: thumb, srcset: thumbSet, onLoad: thumbLoaded, onError: thumbFailed 
         </div>
         <span class="dur vx-mono">{{ toClock(vod.duration) }}</span>
         <template v-if="progress">
-          <span class="resume vx-mono" :title="`You stopped at ${toClock(progress.t)}. Opens the VOD right there.`">
-            ▶ {{ toClock(progress.t) }}
+          <span
+            class="resume vx-mono"
+            :title="grown ? `New since you finished it, from ${toClock(progress.t)}. Opens the VOD right there.` : `You stopped at ${toClock(progress.t)}. Opens the VOD right there.`"
+          >
+            ▶ {{ grown ? 'New ' : '' }}{{ toClock(progress.t) }}
           </span>
           <span class="watched" :style="{ width: `${watched * 100}%` }"></span>
         </template>

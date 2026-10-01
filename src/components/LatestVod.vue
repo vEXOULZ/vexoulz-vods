@@ -3,7 +3,7 @@
 // uploaded in, and every chapter with its game, start and length (each a link to that point). Resumes where you
 // stopped, if you did.
 import { gamePalette, learnGameColors, VxButton, VxChapterBar, VxChip, VxLink, VxPlaceholder, VxPosters } from '@vexoulz/ui'
-import { boxArt, toClock, watchPath, type Progress, type Vod } from '@vexoulz/vods-core'
+import { boxArt, isFinished, toClock, watchPath, type Progress, type Vod } from '@vexoulz/vods-core'
 import { computed, watchEffect } from 'vue'
 import { useThumbnail } from '@/composables/useThumbnail'
 import { gamesWithArt } from '@/lib/art'
@@ -23,6 +23,8 @@ const time = computed(() => props.vod.createdAt.toLocaleTimeString(undefined, { 
 const parts = computed(() => props.vod.uploads.filter((u) => u.type === 'vod').length || props.vod.uploads.length)
 const cut = computed(() => props.vod.chapters.filter((c) => c.restricted && c.kind !== 'gap').length)
 const to = computed(() => watchPath(props.vod, props.progress?.t))
+// Finished before the VOD grew (a playthrough's new stream): `t` is where the new part starts.
+const grown = computed(() => !!props.progress && isFinished(props.progress))
 const watched = computed(() => (props.progress && props.vod.duration ? Math.min(1, props.progress.t / props.vod.duration) : 0))
 
 const { src: thumb, srcset: thumbSet, onLoad: thumbLoaded, onError: thumbFailed } = useThumbnail(() => props.vod, 'always')
@@ -72,7 +74,7 @@ const { src: thumb, srcset: thumbSet, onLoad: thumbLoaded, onError: thumbFailed 
         </div>
         <div class="actions">
           <VxLink :to="to" class="vx-btn is-primary">
-            {{ progress ? `▶ Resume at ${toClock(progress.t)}` : '▶ Watch' }}
+            {{ progress ? (grown ? `▶ Watch what's new (${toClock(progress.t)})` : `▶ Resume at ${toClock(progress.t)}`) : '▶ Watch' }}
           </VxLink>
           <VxLink v-if="progress" :to="watchPath(vod, 0)" class="vx-btn">From the start</VxLink>
         </div>
