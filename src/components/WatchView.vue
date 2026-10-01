@@ -567,13 +567,13 @@ useShortcuts(() => shortcuts.value)
 .un-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
 .smark-next { color: var(--vx-accent); margin-right: 4px; }
 .handoff-actions { align-items: center; }
-.ring { position: relative; flex: none; display: grid; place-items: center; width: 44px; height: 44px; color: var(--vx-accent); }
+.ring { position: relative; flex: none; display: grid; place-items: center; width: 73px; height: 73px; color: var(--vx-accent); }
 .ring.off { color: inherit; opacity: 0.4; }
 .ring svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
 .ring circle { fill: none; stroke: currentColor; stroke-width: 3; }
 .ring-track { opacity: 0.2; }
 .ring-left { stroke-dasharray: 1; stroke-linecap: round; transition: stroke-dashoffset 0.1s linear; }
-.ring-n { font-size: 16px; line-height: 1; }
+.ring-n { font-size: 26px; line-height: 1; }
 .go { min-width: 12ch; justify-content: center; }
 .go.stop { background: var(--vx-warn); border-color: var(--vx-warn); color: var(--vx-bg); font-weight: 600; backdrop-filter: none; }
 .go.stop:hover { filter: brightness(1.08); color: var(--vx-bg); }
