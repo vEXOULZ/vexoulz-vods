@@ -406,8 +406,8 @@ useShortcuts(() => shortcuts.value)
                   <!-- Stopped from the start, for now. -->
                   <CountdownRing :left="null" :total="AUTO_CONTINUE" label="Continuing" />
                   <div class="handoff-btns">
-                    <VxButton :disabled="rolling" title="Suggest a different VOD" @click="another">Another one ↻</VxButton>
-                    <VxButton variant="primary" class="go" :to="watchPath(ending.vod, ending.t ?? undefined)">Continue →</VxButton>
+                    <VxButton :disabled="rolling" title="Suggest a different VOD" @click="another">Another suggestion</VxButton>
+                    <VxButton variant="primary" class="go" :to="watchPath(ending.vod, ending.t ?? undefined)">Watch →</VxButton>
                   </div>
                 </div>
               </div>
