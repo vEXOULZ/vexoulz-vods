@@ -2,6 +2,9 @@
 // The watch page body, shared by /vods/:id (and /live, /youtube) and /games/:id: YouTube player, the timeline across
 // all parts, a controls row (chapters, part picker, copy link, download, theater, shortcuts) and the chat replay.
 // On phones the same controls reflow under the video and chat goes below; nothing is dropped.
+// A synthetic VOD (a merge, split or playthrough) plays windows of other VODs: its timeline is a SegmentTimeline, chat
+// follows whichever source VOD is playing, and a "related" menu links a playthrough's streams and the playthroughs a VOD
+// is part of.
 import {
   gamePalette,
   learnGameColors,
@@ -19,11 +22,13 @@ import {
   mountYouTube,
   toClock,
   WatchPlayer,
+  watchPath,
   type DriveFile,
   type PartStatus,
+  type PlayableTimeline,
   type Position,
+  type SegmentTimeline,
   type Span,
-  type Timeline,
   type Vod,
   type ChatSources,
 } from '@vexoulz/vods-core'
@@ -41,7 +46,11 @@ import VodsShell from '@/components/VodsShell.vue'
 const props = withDefaults(
   defineProps<{
     vod: Vod
-    timeline: Timeline
+    timeline: PlayableTimeline
+    /** A synthetic VOD's timeline again, for chat and the related menu (null for a plain VOD). */
+    segments?: SegmentTimeline | null
+    /** A synthetic VOD's source VODs that loaded. */
+    sources?: readonly Vod[]
     start: Position
     /** VOD time the timeline bar covers; defaults to the whole VOD. */
     range?: Span
@@ -53,7 +62,7 @@ const props = withDefaults(
     /** Save the watch position in this browser. */
     track?: boolean
   }>(),
-  { download: null, track: true },
+  { download: null, track: true, segments: null, sources: () => [] },
 )
 
 const toast = useToast()
@@ -124,12 +133,18 @@ const nextOk = computed(() => {
   for (let i = partIndex.value + 1; i < spans.value.length; i++) if (playable(i)) return i
   return -1
 })
-const partOffset = computed(() => props.timeline.locate(time.value).offset)
+/** Seconds into the part (a synthetic VOD's part can start partway into its YouTube video). */
+const partOffset = computed(() => {
+  const at = props.timeline.locate(time.value)
+  return Math.max(0, at.offset - props.timeline.partStart(at.index))
+})
 
 // ---- chapters ----
 const chapters = computed(() => props.timeline.chapters.filter((c) => c.end > range.value.start && c.start < range.value.end))
 const chapter = computed(() => props.timeline.chapterAt(time.value))
 const chapterIdx = computed(() => (chapter.value ? chapters.value.indexOf(chapter.value) : -1))
+/** Where one source VOD hands over to the next, on a synthetic VOD. */
+const segmentMarks = computed(() => props.segments?.segmentSpans().slice(1).map((s) => s.start) ?? [])
 const palette = computed(() => gamePalette(props.timeline.chapters.map((c) => c.name)))
 const posterGames = computed(() => gamesWithArt(chapters.value).map((g) => ({ ...g, color: palette.value.get(g.name) })))
 watchEffect(() => learnGameColors(posterGames.value))
@@ -165,8 +180,30 @@ async function copyLink() {
 }
 const downloadUrl = computed(() => (props.download ? `https://drive.google.com/open?id=${encodeURIComponent(props.download.id)}` : null))
 
+// ---- related VODs ----
+const sourceById = computed(() => new Map(props.sources.map((s) => [s.id, s])))
+const shortDate = (d: Date) => d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+/** A playthrough's streams (a merge or split replaces its VODs, so those aren't linked: they lead back here). */
+const madeOf = computed(() => {
+  if (!props.segments || props.vod.synthetic?.supersedes) return []
+  return props.segments.segments.map((s, i) => {
+    const src = sourceById.value.get(s.vodId)
+    return {
+      key: `${i}:${s.vodId}`,
+      title: s.label ?? src?.title ?? s.vodId,
+      sub: `${src ? shortDate(src.createdAt) : s.vodId} · ${toClock(s.start)}–${toClock(s.end)}`,
+      to: src ? watchPath(src, s.start) : watchPath({ id: s.vodId, uploads: [] }, s.start),
+      at: s.at,
+    }
+  })
+})
+const appearsIn = computed(() => props.vod.appearsIn ?? [])
+const relatedCount = computed(() => madeOf.value.length + appearsIn.value.length)
+
 // ---- chat + progress ----
-// The chats this VOD has, once chat's first page says (kept here, since useChat's own ref doesn't exist yet when
+// Chat is the playing source's on a synthetic VOD, else this VOD's.
+const chatVodId = computed(() => props.segments?.segmentAt(time.value)?.segment.vodId ?? props.vod.id)
+// The chats that VOD has, once chat's first page says (kept here, since useChat's own ref doesn't exist yet when
 // its options are first read). Tagged with the VOD, so the next VOD doesn't start from this one's.
 const knownSources = shallowRef<{ vodId: string; sources: ChatSources } | null>(null)
 const replay = useChat({
@@ -174,11 +211,12 @@ const replay = useChat({
   time,
   playing,
   offset: toRef(chat, 'delay'),
+  segments: () => props.segments,
   chatSource: () =>
-    chatSourceFor(chat.source, knownSources.value?.vodId === props.vod.id ? knownSources.value.sources : null),
+    chatSourceFor(chat.source, knownSources.value?.vodId === chatVodId.value ? knownSources.value.sources : null),
 })
 watch(replay.sources, (s) => {
-  if (s) knownSources.value = { vodId: props.vod.id, sources: s }
+  if (s) knownSources.value = { vodId: chatVodId.value, sources: s }
 })
 const chatError = computed(() => replay.error.value?.message ?? null)
 if (props.track) useProgress({ vodId: () => props.vod.id, duration: () => props.vod.duration, time, playing })
@@ -252,6 +290,7 @@ useShortcuts(() => shortcuts.value)
             :status="status"
             :part-index="partIndex"
             :part-label="partLabel"
+            :marks="segmentMarks"
             :palette="palette"
             :playing="playing"
             :rate="rate"
@@ -320,6 +359,29 @@ useShortcuts(() => shortcuts.value)
             </slot>
 
             <VxButton icon label="Copy link at this time" @click="copyLink">⧉</VxButton>
+            <VxPopover v-if="relatedCount" prefer="up" align="right" width="min(320px, calc(100vw - 24px))" :cap="380">
+              <template #trigger="{ toggle, open }">
+                <VxButton icon :label="madeOf.length ? 'Streams in this playthrough' : 'Playthroughs with this VOD'" :pressed="open" @click="toggle">☰</VxButton>
+              </template>
+              <template #default="{ close }">
+                <template v-if="madeOf.length">
+                  <div class="vx-eyebrow menu-head">Streams · {{ madeOf.length }}</div>
+                  <VxMenuItem v-for="m in madeOf" :key="m.key" :to="m.to" :sub="m.sub" @click="close()">{{ m.title }}</VxMenuItem>
+                </template>
+                <template v-if="appearsIn.length">
+                  <div class="vx-eyebrow menu-head">Also in</div>
+                  <VxMenuItem
+                    v-for="a in appearsIn"
+                    :key="a.id"
+                    :to="watchPath({ id: a.id, uploads: [] })"
+                    :sub="a.tags.includes('compilation') ? 'playthrough' : undefined"
+                    @click="close()"
+                  >
+                    {{ a.title || a.id }}
+                  </VxMenuItem>
+                </template>
+              </template>
+            </VxPopover>
             <VxButton v-if="downloadUrl" icon label="Download VOD" :href="downloadUrl" external>⤓</VxButton>
             <VxButton icon :label="theater ? 'Leave theater mode' : 'Theater mode'" :pressed="theater" @click="theater = !theater">
               {{ theater ? '⤡' : '⤢' }}

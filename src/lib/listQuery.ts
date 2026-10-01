@@ -1,7 +1,22 @@
-// The list page keeps its filters in the URL so a link reproduces the view: ?title=&game=&from=&to=&page=
+// The list page keeps its filters in the URL so a link reproduces the view: ?tab=&title=&game=&from=&to=&page=
 import type { VodListOptions } from '@vexoulz/vods-core'
 
+/**
+ * The list's tabs, one per VOD tag the site knows. Plain VODs (no tags) first; a tag the site doesn't know yet has no
+ * tab, so its VODs stay out of every list until one is added here.
+ */
+export const TABS = [
+  { value: 'vods', label: 'VODs', tag: undefined },
+  { value: 'playthroughs', label: 'Playthroughs', tag: 'compilation' },
+] as const
+
+/** How a VOD tag reads on a chip. */
+export const tagLabel = (tag: string) => (tag === 'compilation' ? 'playthrough' : tag)
+
+export type Tab = (typeof TABS)[number]['value']
+
 export interface ListState {
+  tab: Tab
   page: number
   title: string
   game: string
@@ -19,7 +34,9 @@ export function parseListQuery(q: Query): ListState {
   const page = Number.parseInt(first(q.page), 10)
   const from = first(q.from)
   const to = first(q.to)
+  const tab = first(q.tab)
   return {
+    tab: TABS.find((t) => t.value === tab)?.value ?? 'vods',
     page: Number.isFinite(page) && page > 0 ? page : 1,
     title: first(q.title).slice(0, 200),
     game: first(q.game).slice(0, 200),
@@ -31,6 +48,7 @@ export function parseListQuery(q: Query): ListState {
 /** Query object with defaults left out, so the plain list is just `/vods`. */
 export function toListQuery(s: ListState): Record<string, string> {
   const q: Record<string, string> = {}
+  if (s.tab !== 'vods') q.tab = s.tab
   if (s.title) q.title = s.title
   if (s.game) q.game = s.game
   if (s.from) q.from = s.from
@@ -42,6 +60,7 @@ export function toListQuery(s: ListState): Record<string, string> {
 /** Filters for the API. Dates are local days: `from` from its start, `to` through its end. */
 export function toApiFilter(s: ListState): Omit<VodListOptions, 'page' | 'perPage'> {
   return {
+    tag: TABS.find((t) => t.value === s.tab)?.tag,
     title: s.title || undefined,
     game: s.game || undefined,
     from: s.from ? new Date(`${s.from}T00:00:00`) : undefined,
@@ -49,5 +68,6 @@ export function toApiFilter(s: ListState): Omit<VodListOptions, 'page' | 'perPag
   }
 }
 
+/** Any filter on, the tab aside (a tab isn't a filter: "All" keeps it). */
 export const hasFilters = (s: ListState) => !!(s.title || s.game || s.from || s.to)
 

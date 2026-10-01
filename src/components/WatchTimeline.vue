@@ -2,13 +2,13 @@
 // One bar for the whole VOD (all parts): chapters in their game colour, restricted chapters hatched, parts that
 // can't play hatched red, part labels above. Click, drag or use the arrow keys to seek (VOD seconds).
 import { clamp, clampX } from '@vexoulz/ui'
-import { toClock, type PartStatus, type Span, type Timeline } from '@vexoulz/vods-core'
+import { toClock, type PartStatus, type PlayableTimeline, type Span } from '@vexoulz/vods-core'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { unplayable } from '@/lib/cuts'
 import SnailMarker, { type SnailMode } from './SnailMarker.vue'
 
 const props = defineProps<{
-  timeline: Timeline
+  timeline: PlayableTimeline
   /** The stretch of VOD time the bar covers. */
   range: Span
   time: number
@@ -16,6 +16,8 @@ const props = defineProps<{
   partIndex: number
   /** Label for part i (P1, or a game name on the games page). */
   partLabel?: (i: number) => string
+  /** VOD times where one source VOD hands over to the next (a synthetic VOD's segment starts). */
+  marks?: readonly number[]
   /** Colours per game (gamePalette of the VOD), shared with the posters. */
   palette: Map<string, string>
   /** The snail on the playhead crawls while this is on, and sleeps otherwise. */
@@ -165,6 +167,7 @@ const shownColor = computed(() => {
         <span v-if="unplayable(status[i])" class="unseg" :style="{ left: pct(s.start), width: width(s.start, s.end) }"></span>
       </template>
       <span v-for="(s, i) in spans.slice(1)" :key="'t' + i" class="tick" :style="{ left: pct(s.start) }"></span>
+      <span v-for="(m, i) in marks ?? []" :key="'m' + i" class="mark" :style="{ left: pct(m) }"></span>
       <span class="rest" :style="{ left: pct(shown) }"></span>
       <span class="played" :style="{ width: pct(shown) }"></span>
       <SnailMarker class="head" :mode="snailMode" :rate="rate" :shell="shownColor" :style="{ left: pct(shown) }" />
@@ -199,6 +202,8 @@ const shownColor = computed(() => {
 .seg.gap { background: radial-gradient(circle, rgb(255 255 255 / 0.35) 1px, transparent 1.5px) 0 50% / 5px 100% repeat-x; }
 .unseg { position: absolute; top: 0; bottom: 0; pointer-events: none; background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--vx-bad) 55%, transparent) 0 2px, rgb(0 0 0 / 0.65) 2px 6px); }
 .tick { position: absolute; top: -9px; bottom: -2px; width: 1px; background: var(--vx-muted); pointer-events: none; }
+/* Where a synthetic VOD moves on to its next stream: brighter and wider than a part tick. */
+.mark { position: absolute; top: -12px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--vx-accent); pointer-events: none; }
 /* Progress never paints over the chapter colours: what's still ahead is dimmed, and a thin accent line runs under
    what's been played. */
 .rest { position: absolute; right: 0; top: 0; bottom: 0; background: rgb(0 0 0 / 0.55); pointer-events: none; }

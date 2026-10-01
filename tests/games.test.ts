@@ -17,6 +17,7 @@ const vod: Vod = {
   games: [],
   thumbnail: null,
   streamId: null,
+  tags: [],
 }
 const game: GameUpload = { id: 'g', vodId: '1', start: 4000, end: 10_000, videoId: 'yt', gameId: null, gameName: 'C', title: null, thumbnail: null }
 

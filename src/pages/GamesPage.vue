@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // /games/:id?part=N: a VOD's per-game uploads (one YouTube video per game). Each game plays on its own timeline that
 // keeps VOD time, so the bar, chapters and chat line up with the full VOD. `?part=` is the 1-based game (old URLs).
+// On a synthetic VOD the games keep its time too, and chat follows the source VOD each moment comes from.
 import { VxButton, VxCallout, VxChip, VxEmptyState, VxMenuItem, VxPopover, VxSkeleton, clamp } from '@vexoulz/ui'
 import { parseTimestamp, toClock, toHMS, type GameUpload } from '@vexoulz/vods-core'
 import { useVodsContext, useWatch } from '@vexoulz/vods-core/vue'
@@ -14,7 +15,7 @@ const props = defineProps<{ id: string }>()
 const route = useRoute()
 const router = useRouter()
 const { config } = useVodsContext()
-const { vod, loading, notFound, error, reload } = useWatch(() => props.id)
+const { vod, sources, segments, loading, notFound, error, reload } = useWatch(() => props.id)
 
 const games = computed(() => vod.value?.games ?? [])
 const index = computed(() => {
@@ -46,6 +47,8 @@ watchEffect(() => {
     :key="`${vod.id}:${index}`"
     :vod="vod"
     :timeline="timeline"
+    :segments="segments"
+    :sources="sources"
     :start="start"
     :range="range"
     :part-label="() => gameName(game!)"
@@ -70,7 +73,7 @@ watchEffect(() => {
           >
             {{ gameName(g) }}
           </VxMenuItem>
-          <VxMenuItem :to="`/vods/${vod.id}`" @click="close()">
+          <VxMenuItem :to="`/vods/${encodeURIComponent(vod.id)}`" @click="close()">
             Full VOD<template #trail><VxChip>all parts</VxChip></template>
           </VxMenuItem>
         </template>
@@ -86,7 +89,7 @@ watchEffect(() => {
       <template #actions><VxButton to="/vods" variant="primary">Browse VODs</VxButton></template>
     </VxEmptyState>
     <VxEmptyState v-else-if="vod && !games.length" title="No per-game uploads" :text="`“${vod.title}” wasn't split into games.`">
-      <template #actions><VxButton :to="`/vods/${vod.id}`" variant="primary">Watch the full VOD</VxButton></template>
+      <template #actions><VxButton :to="`/vods/${encodeURIComponent(vod.id)}`" variant="primary">Watch the full VOD</VxButton></template>
     </VxEmptyState>
     <div v-else-if="loading" class="loading" aria-busy="true">
       <VxSkeleton ratio="16 / 9" h="auto" />
