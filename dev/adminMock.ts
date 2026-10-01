@@ -197,6 +197,8 @@ async function publicJson(api: string, path: string): Promise<unknown> {
 
 async function vodOf(api: string, id: string): Promise<Json | null> {
   if (!id || deleted.has(id)) return null
+  const sv = synthetics.get(id)
+  if (sv) return synthVod(sv)
   if (!vods.has(id)) {
     try {
       vods.set(id, (await publicJson(api, `/vods/${encodeURIComponent(id)}`)) as Json)
@@ -205,6 +207,68 @@ async function vodOf(api: string, id: string): Promise<Json | null> {
     }
   }
   return vods.get(id)!
+}
+
+// Synthetic VODs: windows of real ones, placed on their own timeline.
+type Synth = { id: string; title: string | null; supersedes: boolean; tags: string[]; created_at: string | null; made_at: string; changed_at: string; segments: Json[] }
+const synthetics = new Map<string, Synth>()
+const synthLen = (sv: Synth) => sv.segments.reduce((n, g) => Math.max(n, g.at + g.end - g.start), 0)
+const syntheticView = (sv: Synth) => ({ ...sv, hidden: hidden.has(sv.id), duration: hms(synthLen(sv)) })
+/** The synthetic VOD as /admin/vods/{id} and the v2 list show it. */
+const synthVod = (sv: Synth): Json => ({
+  id: sv.id, title: sv.title, createdAt: sv.created_at, duration: hms(synthLen(sv)), duration_seconds: synthLen(sv),
+  thumbnail_url: null, stream_id: null, tags: sv.tags, chapters: [], youtube: [], drive: [], games: [],
+  synthetic: { supersedes: sv.supersedes, segments: sv.segments.map((g) => ({ vodId: g.vod_id, start: g.start, end: g.end, at: g.at, label: g.label })) },
+})
+/** Checks a POST or PUT body the way the worker does, filling start/end/at from the sources. */
+async function buildSynthetic(api: string, id: string, b: Json, was: Synth | null): Promise<Synth | { status: number; code: string; error: string }> {
+  const raw = Array.isArray(b.segments) ? (b.segments as Json[]) : []
+  if (!raw.length) return { status: 422, code: 'invalid_synthetic', error: 'It needs at least one segment.' }
+  const segments: Json[] = []
+  let at = 0
+  let first: Json | null = null
+  for (const [i, g] of raw.entries()) {
+    const src = await vodOf(api, String(g.vod_id ?? ''))
+    if (!src) return { status: 404, code: 'vod_not_found', error: `Segment ${i + 1}: no VOD ${g.vod_id}.` }
+    first ??= src
+    const start = g.start ?? 0
+    const end = g.end ?? durOf(src)
+    if (end <= start) return { status: 422, code: 'invalid_synthetic', error: `Segment ${i + 1}: the end must come after the start.` }
+    const place = g.at ?? at
+    segments.push({ vod_id: String(src.id), start, end, at: place, label: g.label ?? null, stream: String(src.stream_id ?? src.id) })
+    at = place + end - start
+  }
+  const now = iso()
+  return {
+    id, title: (b.title as string | null) ?? null, supersedes: !!b.supersedes, tags: (b.tags as string[]) ?? [],
+    created_at: first!.createdAt ?? null, made_at: was?.made_at ?? now, changed_at: now, segments,
+  }
+}
+
+async function listVods(api: string, sp: URLSearchParams, before: string | null) {
+  const q = (sp.get('q') ?? '').trim()
+  const limit = Math.min(Number(sp.get('limit')) || 30, 200)
+  const want = sp.get('hidden')
+  const beforeAt = before ? (await vodOf(api, before))?.createdAt : null
+  const params = [`$limit=${limit + 1}`, '$sort[createdAt]=-1']
+  if (beforeAt) params.push(`createdAt[$lt]=${encodeURIComponent(beforeAt)}`)
+  let found: Json[]
+  if (/^\d+$/.test(q)) {
+    const one = await vodOf(api, q)
+    found = one ? [one] : []
+  } else {
+    if (q) params.push(`title=${encodeURIComponent(q)}`)
+    found = ((await publicJson(api, `/vods?${params.join('&')}`)) as { data: Json[] }).data
+  }
+  // Hidden VODs are gone from the public API: the mock adds back the ones it hid (on the first page).
+  const extra = before ? [] : [...hidden].map((h) => vods.get(h)).filter((v): v is Json => !!v && !found.some((f) => String(f.id) === String(v.id)))
+  const rows = [...found.map((v) => vods.get(String(v.id)) ?? v), ...extra]
+    .filter((v) => !deleted.has(String(v.id)))
+    .filter((v) => (want === 'true' ? hidden.has(String(v.id)) : want === 'false' ? !hidden.has(String(v.id)) : true))
+    .filter((v) => !q || /^\d+$/.test(q) || String(v.title ?? '').toLowerCase().includes(q.toLowerCase()))
+    .sort((a, c) => Date.parse(c.createdAt) - Date.parse(a.createdAt))
+  const page = rows.slice(0, limit)
+  return { page, more: found.length > limit && page.length > 0 }
 }
 
 const adminVod = (v: Json) => ({
@@ -568,36 +632,81 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
 
         // ---- VOD list (every VOD, hidden and merged ones too) ----
         if (path === '/admin/vods' && method === 'GET') {
-          const q = (url.searchParams.get('q') ?? '').trim()
-          const limit = Math.min(Number(url.searchParams.get('limit')) || 30, 100)
-          const want = url.searchParams.get('hidden')
           const before = url.searchParams.get('before')
-          const beforeAt = before ? (await vodOf(publicApi, before))?.createdAt : null
-          const params = [`$limit=${limit + 1}`, '$sort[createdAt]=-1']
-          if (beforeAt) params.push(`createdAt[$lt]=${encodeURIComponent(beforeAt)}`)
-          let found: Json[]
-          if (/^\d+$/.test(q)) {
-            const one = await vodOf(publicApi, q)
-            found = one ? [one] : []
-          } else {
-            if (q) params.push(`title=${encodeURIComponent(q)}`)
-            found = ((await publicJson(publicApi, `/vods?${params.join('&')}`)) as { data: Json[] }).data
-          }
-          // Hidden VODs are gone from the public API: the mock adds back the ones it hid (on the first page).
-          const extra = before ? [] : [...hidden].map((h) => vods.get(h)).filter((v): v is Json => !!v && !found.some((f) => String(f.id) === String(v.id)))
-          const rows = [...found.map((v) => vods.get(String(v.id)) ?? v), ...extra]
-            .filter((v) => !deleted.has(String(v.id)))
-            .filter((v) => (want === 'true' ? hidden.has(String(v.id)) : want === 'false' ? !hidden.has(String(v.id)) : true))
-            .filter((v) => !q || /^\d+$/.test(q) || String(v.title ?? '').toLowerCase().includes(q.toLowerCase()))
-            .sort((a, c) => Date.parse(c.createdAt) - Date.parse(a.createdAt))
-          const page = rows.slice(0, limit)
+          const { page, more } = await listVods(publicApi, url.searchParams, before)
           return send(res, 200, {
             data: page.map((v) => ({
               id: String(v.id), title: v.title ?? null, createdAt: v.createdAt, duration: v.duration, duration_seconds: durOf(v),
               thumbnail_url: v.thumbnail_url ?? null, stream_id: v.stream_id ?? null, hidden: hidden.has(String(v.id)), merged_into: v.merged_into?.id ?? null,
             })),
-            next: found.length > limit && page.length ? String(page[page.length - 1]!.id) : null,
+            next: more ? String(page[page.length - 1]!.id) : null,
           })
+        }
+        // v2: the same, with synthetic VODs (?synthetic=), snake_case and an opaque cursor (here, the last id).
+        if (path === '/api/v2/vods' && method === 'GET') {
+          const cursor = url.searchParams.get('cursor')
+          const kind = url.searchParams.get('synthetic')
+          const { page, more } =
+            kind === 'true' ? { page: [] as Json[], more: false } : await listVods(publicApi, url.searchParams, cursor)
+          const q = (url.searchParams.get('q') ?? '').trim().toLowerCase()
+          const want = url.searchParams.get('hidden')
+          const synth = cursor || kind === 'false' ? [] : [...synthetics.values()]
+            .filter((sv) => !q || sv.id === q || String(sv.title ?? '').toLowerCase().includes(q))
+            .filter((sv) => (want === 'true' ? hidden.has(sv.id) : want === 'false' ? !hidden.has(sv.id) : true))
+            .map(synthVod)
+          const items = [...synth, ...page].map((v) => ({
+            id: String(v.id), title: v.title ?? null, created_at: v.createdAt, duration: v.duration ?? null, duration_seconds: durOf(v),
+            thumbnail_url: v.thumbnail_url ?? null, stream_id: v.stream_id ?? null, hidden: hidden.has(String(v.id)),
+            merged_into: v.merged_into ?? null, tags: v.tags ?? [], synthetic: v.synthetic ? { supersedes: v.synthetic.supersedes } : null,
+          }))
+          return send(res, 200, { items, next_cursor: more ? String(page[page.length - 1]!.id) : null })
+        }
+
+        // ---- synthetic VODs (/api/v2/synthetic) ----
+        const sm = /^\/api\/v2\/synthetic(?:\/([^/]+))?$/.exec(path)
+        if (sm) {
+          const id = sm[1] ? decodeURIComponent(sm[1]) : null
+          if (!id && method === 'POST') {
+            const nid = String(b.id ?? '').trim()
+            if (!nid || /^\d+$/.test(nid)) return problem(res, 422, 'invalid_synthetic', 'The id must not be only digits: those are Twitch VOD ids.')
+            if (synthetics.has(nid) || vods.has(nid)) return problem(res, 409, 'synthetic_conflict', `${nid} already exists.`)
+            const made = await buildSynthetic(publicApi, nid, b, null)
+            if ('error' in made) return problem(res, made.status, made.code, made.error)
+            synthetics.set(nid, made)
+            return send(res, 201, syntheticView(made))
+          }
+          const sv = id ? synthetics.get(id) : undefined
+          if (!sv) return problem(res, 404, 'vod_not_found', `No synthetic VOD ${id}.`)
+          if (method === 'GET') return send(res, 200, syntheticView(sv))
+          if (method === 'PUT') {
+            const next = await buildSynthetic(publicApi, sv.id, { ...sv, ...b }, sv)
+            if ('error' in next) return problem(res, next.status, next.code, next.error)
+            synthetics.set(sv.id, next)
+            return send(res, 200, syntheticView(next))
+          }
+          if (method === 'DELETE') {
+            synthetics.delete(sv.id)
+            return send(res, 200, syntheticView(sv))
+          }
+        }
+        if (path === '/api/v2/playthrough-candidates' && method === 'GET') {
+          const game = url.searchParams.get('game_id')
+          if (!game) return problem(res, 422, 'invalid_request', 'game_id is required.')
+          const recent = ((await publicJson(publicApi, '/vods?$limit=50&$sort[createdAt]=-1')) as { data: Json[] }).data
+          const items = recent
+            .filter((v) => !hidden.has(String(v.id)))
+            .flatMap((v) =>
+              ((v.chapters as Json[]) ?? [])
+                .filter((c) => String(c.gameId) === game)
+                .map((c) => {
+                  const start = Number(c.start) || 0
+                  const end = Number(c.end) || durOf(v)
+                  const label = String(v.createdAt).slice(0, 10)
+                  return { vod_id: String(v.id), title: v.title ?? null, created_at: v.createdAt, start, end, length: end - start, segment: { vod_id: String(v.id), start, end, label } }
+                }),
+            )
+            .sort((a, c) => Date.parse(a.created_at) - Date.parse(c.created_at))
+          return send(res, 200, { items })
         }
 
         // ---- runtime settings ----

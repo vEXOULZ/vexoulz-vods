@@ -220,6 +220,75 @@ export interface SplitPoint {
   to: number
 }
 
+/** A row of GET /api/v2/vods: every VOD, hidden, merged and synthetic ones too. */
+export interface VodListRow {
+  id: string
+  title: string | null
+  created_at: string
+  duration: string | null
+  duration_seconds: number | null
+  thumbnail_url: string | null
+  stream_id: string | null
+  hidden: boolean
+  merged_into: { id: string; offset: number } | null
+  /** [] for a regular VOD; a playthrough is tagged `compilation`. */
+  tags: string[]
+  /** Set on a synthetic VOD. */
+  synthetic: { supersedes?: boolean } | null
+}
+
+/** A window `[start, end)` of a real VOD, placed at `at` on the synthetic VOD's timeline (seconds). */
+export interface SyntheticSegment {
+  vod_id: string
+  /** Null: from the source's start. */
+  start: number | null
+  /** Null: to the source's end. */
+  end: number | null
+  /** Null on the way in: right after the segment before. */
+  at: number | null
+  label: string | null
+  stream?: string
+}
+
+/** GET/PUT /api/v2/synthetic/{id}: a VOD made of windows of real ones (a merge, a split or a playthrough). */
+export interface SyntheticVod {
+  id: string
+  title: string | null
+  /** Its sources leave the public lists and redirect into it (a merge or split); otherwise it's listed beside them. */
+  supersedes: boolean
+  tags: string[]
+  hidden: boolean
+  duration: string | null
+  created_at: string | null
+  /** When it was made, and when its segments, title or tags last changed. */
+  made_at: string | null
+  changed_at: string | null
+  segments: SyntheticSegment[]
+}
+
+/** POST /api/v2/synthetic (with `id`) or PUT /api/v2/synthetic/{id} (only the fields sent change). */
+export interface SyntheticInput {
+  /** New ones only; not only digits (those are Twitch's). */
+  id?: string
+  /** Null: the first source's. */
+  title?: string | null
+  supersedes?: boolean
+  tags?: string[]
+  segments?: Partial<SyntheticSegment>[]
+}
+
+/** GET /api/v2/playthrough-candidates: a window of a real, shown VOD playing the game, oldest first. */
+export interface PlaythroughWindow {
+  vod_id: string
+  title: string | null
+  created_at: string
+  start: number
+  end: number
+  length: number
+  /** Ready to send as a segment. */
+  segment: { vod_id: string; start: number; end: number; label: string }
+}
+
 /** A chapter as PUT /admin/vods/{id}/chapters takes it. Times in seconds; `length`, not an end time. */
 export interface ChapterEdit {
   name: string | null
@@ -400,6 +469,34 @@ export class AdminClient {
   /** Undoes the latest split of `id`, or the one that made `source`. */
   unsplit(id: string, source?: string, force = false): Promise<SpliceResult> {
     return this.request('POST', `/admin/vods/${enc(id)}/unsplit`, { source: source || undefined, force: force || undefined })
+  }
+
+  // ---- /api/v2: the VOD list and synthetic VODs ----
+  /** Newest first; `q` is an exact id or part of a title; `synthetic` keeps only those (or only real ones). */
+  vodList(
+    q: { q?: string; hidden?: boolean; synthetic?: boolean; tag?: string; cursor?: string; limit?: number } = {},
+    signal?: AbortSignal,
+  ): Promise<{ items: VodListRow[]; next_cursor: string | null }> {
+    const params = new URLSearchParams()
+    for (const [k, v] of Object.entries(q)) if (v !== undefined && v !== '') params.set(k, String(v))
+    const qs = params.toString()
+    return this.request('GET', `/api/v2/vods${qs ? `?${qs}` : ''}`, undefined, signal)
+  }
+  synthetic(id: string, signal?: AbortSignal): Promise<SyntheticVod> {
+    return this.request('GET', `/api/v2/synthetic/${enc(id)}`, undefined, signal)
+  }
+  createSynthetic(body: SyntheticInput & { id: string }): Promise<SyntheticVod> {
+    return this.request('POST', '/api/v2/synthetic', body)
+  }
+  updateSynthetic(id: string, body: SyntheticInput): Promise<SyntheticVod> {
+    return this.request('PUT', `/api/v2/synthetic/${enc(id)}`, body)
+  }
+  /** The whole undo: its sources were never changed, so they list and play as before. */
+  deleteSynthetic(id: string): Promise<SyntheticVod> {
+    return this.request('DELETE', `/api/v2/synthetic/${enc(id)}`)
+  }
+  playthroughCandidates(gameId: string, signal?: AbortSignal): Promise<{ items: PlaythroughWindow[] }> {
+    return this.request('GET', `/api/v2/playthrough-candidates?game_id=${encodeURIComponent(gameId)}`, undefined, signal)
   }
 
   // ---- VOD jobs and fixes (the worker's existing routes) ----

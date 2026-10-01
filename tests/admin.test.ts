@@ -23,6 +23,22 @@ describe('AdminClient', () => {
     expect((init2!.headers as Record<string, string>)['x-csrf-token']).toBe('tok')
   })
 
+  it('lists VODs and edits synthetic ones through /api/v2', async () => {
+    const fetch = fakeFetch(200, { items: [], next_cursor: null })
+    const c = new AdminClient({ base: '', fetch })
+    await c.vodList({ q: '', synthetic: true, cursor: 'abc', limit: 30 })
+    await c.createSynthetic({ id: 'elden-ring', tags: ['compilation'], segments: [{ vod_id: '1', start: 5 }] })
+    await c.updateSynthetic('elden ring', { title: 'x' })
+    await c.playthroughCandidates('512953')
+    const sent = fetch.mock.calls.map(([url, init]) => [url, init!.method, init!.body ?? null])
+    expect(sent).toEqual([
+      ['/api/v2/vods?synthetic=true&cursor=abc&limit=30', 'GET', null],
+      ['/api/v2/synthetic', 'POST', JSON.stringify({ id: 'elden-ring', tags: ['compilation'], segments: [{ vod_id: '1', start: 5 }] })],
+      ['/api/v2/synthetic/elden%20ring', 'PUT', JSON.stringify({ title: 'x' })],
+      ['/api/v2/playthrough-candidates?game_id=512953', 'GET', null],
+    ])
+  })
+
   it('starts bot chat for one VOD, and backfills all or only some', async () => {
     const fetch = fakeFetch(200, { error: false, msg: 'ok', jobId: 3 })
     const c = new AdminClient({ base: '', fetch })

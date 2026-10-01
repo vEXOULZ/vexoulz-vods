@@ -111,6 +111,12 @@ onMounted(() => (document.title = `VOD ${props.id} · Manage · vods.vexoulz.net
         This VOD is gone from the public site: the list, its watch page, the games pages and its chat. It's still here.
       </VxCallout>
 
+      <VxCallout v-if="vod.synthetic" tone="info" title="A synthetic VOD">
+        It's made of windows of other VODs{{ vod.synthetic.supersedes ? ', and stands in for them' : '' }}. Its segments,
+        title and tags are edited on its own page; here it can be hidden and its jobs run.
+        <template #actions><VxButton size="sm" :to="`/manage/synthetic/${encodeURIComponent(id)}`">Edit its segments</VxButton></template>
+      </VxCallout>
+
       <section class="panel vx-panel">
         <h2 class="title">{{ vod.title ?? 'Untitled' }}</h2>
         <div class="visibility">
@@ -140,7 +146,8 @@ onMounted(() => (document.title = `VOD ${props.id} · Manage · vods.vexoulz.net
         </dl>
       </section>
 
-      <section class="panel vx-panel">
+      <!-- A synthetic VOD's details and segments are edited on its own page (the worker refuses them here). -->
+      <section v-if="!vod.synthetic" class="panel vx-panel">
         <h2 class="vx-eyebrow">Details</h2>
         <DetailsEditor :vod="vod" @saved="saved" />
       </section>
@@ -150,7 +157,7 @@ onMounted(() => (document.title = `VOD ${props.id} · Manage · vods.vexoulz.net
         <VodActions :vod="vod" @job="jobStarted" @changed="load" @deleted="deleted" />
       </section>
 
-      <section class="panel vx-panel">
+      <section v-if="!vod.synthetic" class="panel vx-panel">
         <h2 class="vx-eyebrow">Merge and split</h2>
         <SplicePanel :vod="vod" @changed="load" @job="jobStarted" />
       </section>
@@ -160,8 +167,8 @@ onMounted(() => (document.title = `VOD ${props.id} · Manage · vods.vexoulz.net
         <JobsTable :jobs="jobs" empty="No jobs for this VOD." label="This VOD's jobs" />
       </section>
 
-      <!-- A VOD merged into another has no chapters, uploads or emotes of its own left to edit. -->
-      <template v-if="!vod.merged_into">
+      <!-- A VOD merged into another, or a synthetic one, has no chapters, uploads or emotes of its own to edit. -->
+      <template v-if="!vod.merged_into && !vod.synthetic">
         <section class="panel vx-panel">
           <h2 class="vx-eyebrow">Chapters</h2>
           <ChaptersEditor :vod="vod" :duration="duration" @saved="saved" />
