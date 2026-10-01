@@ -753,6 +753,15 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
           const items = rows.slice(0, limit)
           return send(res, 200, { items: items.map(v2Job), next_cursor: rows.length > limit ? String(items[items.length - 1]!.id) : null })
         }
+        if (path === '/api/v2/jobs/counts' && method === 'GET') {
+          const kind = url.searchParams.get('kind')
+          const subject = url.searchParams.get('subject')
+          const since = Date.parse(url.searchParams.get('since') ?? '') || 0
+          const rows = jobs.filter((j) => (!kind || j.kind === kind) && (!subject || `vod:${j.vodId}` === subject))
+            .filter((j) => ['queued', 'running', 'paused'].includes(j.state) || !since || Date.parse(v2Job(j).finished_at ?? '') >= since)
+          const n = Object.fromEntries(['queued', 'running', 'paused', 'succeeded', 'failed', 'cancelled'].map((s) => [s, rows.filter((j) => j.state === v2State(s)).length]))
+          return send(res, 200, { counts: n, total: rows.length })
+        }
         if (path === '/api/v2/jobs' && method === 'POST') {
           const kind = String(b.kind ?? '')
           if (!KINDS[kind]) return problem(res, 422, 'invalid', 'Invalid request', [{ loc: ['body', 'kind'], msg: `unknown kind ${kind}`, type: 'value_error' }])
