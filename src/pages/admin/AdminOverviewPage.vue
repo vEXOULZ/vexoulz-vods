@@ -2,16 +2,26 @@
 import { timeAgo, VxButton, VxCallout, VxChip, VxSkeleton, VxStatusDot, useToast } from '@vexoulz/ui'
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { JOB_STATES } from '@/admin/api'
+import { JobsTable, usePoll } from '@vexoulz/platform-web/vue'
 import ManageShell from '@/admin/ManageShell.vue'
-import JobsTable from '@/admin/JobsTable.vue'
-import { STATE_TONE } from '@/admin/format'
+import { platform } from '@/admin/platform'
 import { admin } from '@/admin/session'
-import { usePoll } from '@/admin/usePoll'
 import { errorMessage } from '@/lib/errors'
 
 const { data: health, error, loading, refresh } = usePoll((signal) => admin.health(signal), 15_000)
 const toast = useToast()
+// The counts are v1 /admin/health's (legacy jobs too; v2 has no counts yet); the failures are v2 runs.
+const { data: failures } = usePoll((signal) => platform.jobs({ state: ['failed'], limit: 10 }, signal), 15_000)
+
+/** v1 counts by state, linked to the jobs page (v1 `done` is v2 `succeeded`). */
+const COUNT_STATES = [
+  { v1: 'queued', state: 'queued', tone: 'default' },
+  { v1: 'running', state: 'running', tone: 'accent' },
+  { v1: 'paused', state: 'paused', tone: 'warn' },
+  { v1: 'done', state: 'succeeded', tone: 'ok' },
+  { v1: 'failed', state: 'failed', tone: 'bad' },
+  { v1: 'cancelled', state: 'cancelled', tone: 'default' },
+] as const
 
 onMounted(() => (document.title = 'Overview · Manage · vods.vexoulz.net'))
 
@@ -100,15 +110,15 @@ async function connectYoutube() {
       <section>
         <h2 class="vx-eyebrow">Jobs</h2>
         <div class="counts">
-          <RouterLink v-for="s in JOB_STATES" :key="s" :to="`/manage/jobs?state=${s}`" class="count">
-            <VxChip :tone="health.jobs.counts[s] ? STATE_TONE[s] : 'default'" :k="s">{{ health.jobs.counts[s] ?? 0 }}</VxChip>
+          <RouterLink v-for="s in COUNT_STATES" :key="s.state" :to="`/manage/jobs?state=${s.state}`" class="count">
+            <VxChip :tone="health.jobs.counts[s.v1] ? s.tone : 'default'" :k="s.state">{{ health.jobs.counts[s.v1] ?? 0 }}</VxChip>
           </RouterLink>
         </div>
       </section>
 
       <section>
         <h2 class="vx-eyebrow">Recent failures</h2>
-        <JobsTable :jobs="health.jobs.recentFailures" empty="No failed jobs. 🎉" />
+        <JobsTable :jobs="failures?.items ?? []" empty="No failed jobs. 🎉" label="Recent failures" />
       </section>
     </template>
   </ManageShell>

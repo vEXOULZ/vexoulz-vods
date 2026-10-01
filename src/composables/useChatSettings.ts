@@ -56,13 +56,6 @@ export function chatSourceFor(pref: ChatSource | 'auto', sources: ChatSources | 
   return sources[pref] === 0 && sources[other] > 0 ? other : pref
 }
 
-/** The name to show for a chatter; the username is left out when unknown or only differs from the name in case. */
-export function chatName(user: string, login: string | null, mode: ChatSettings['names']): { name: string; login: string | null } {
-  if (mode === 'login') return { name: login ?? user, login: null }
-  if (mode === 'both' && login && login !== user.toLowerCase()) return { name: user, login }
-  return { name: user, login: null }
-}
-
 /** The saved settings (from `get`, e.g. localStorage's), with anything missing or odd set to the default. */
 export function readSaved(get: (key: string) => string | null): ChatSettings {
   const base = defaultChatSettings()

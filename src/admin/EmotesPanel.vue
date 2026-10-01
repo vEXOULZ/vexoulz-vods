@@ -4,7 +4,7 @@ import { timeAgo, VxButton, VxCallout, VxChip, VxDialog, VxSkeleton, VxTabs, use
 import { emoteImage, type RawThirdPartyEmote } from '@vexoulz/vods-core'
 import { computed, ref, watch } from 'vue'
 import type { AdminEmotes } from './api'
-import { stamp } from './format'
+import { stamp } from '@vexoulz/platform-web'
 import { admin } from './session'
 import { errorMessage } from '@/lib/errors'
 

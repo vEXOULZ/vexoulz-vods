@@ -6,7 +6,7 @@ import { VxButton, VxCallout, VxChip, VxDialog, VxField, VxInput, VxSkeleton, us
 import { normalizeVod, Timeline, toClock, toSeconds } from '@vexoulz/vods-core'
 import { computed, ref, watch } from 'vue'
 import { AdminApiError, type AdminVod, type MergeCandidate, type MergeCandidates, type Splice, type SpliceResult, type SplitPoint } from './api'
-import { stamp } from './format'
+import { stamp } from '@vexoulz/platform-web'
 import { admin } from './session'
 import { errorMessage } from '@/lib/errors'
 

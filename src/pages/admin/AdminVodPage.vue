@@ -13,11 +13,11 @@ import DriveEditor from '@/admin/DriveEditor.vue'
 import { vodSeconds } from '@/admin/edits'
 import EmotesPanel from '@/admin/EmotesPanel.vue'
 import GamesEditor from '@/admin/GamesEditor.vue'
-import JobsTable from '@/admin/JobsTable.vue'
 import SplicePanel from '@/admin/SplicePanel.vue'
-import { stamp } from '@/admin/format'
+import { stamp } from '@vexoulz/platform-web'
+import { JobsTable, usePoll } from '@vexoulz/platform-web/vue'
 import { admin } from '@/admin/session'
-import { usePoll } from '@/admin/usePoll'
+import { platform, vodSubject } from '@/admin/platform'
 import VodActions from '@/admin/VodActions.vue'
 import YoutubeEditor from '@/admin/YoutubeEditor.vue'
 import { errorMessage } from '@/lib/errors'
@@ -44,8 +44,8 @@ async function load() {
 watch(() => props.id, load, { immediate: true })
 
 // The VOD's jobs refresh on their own; the VOD itself only reloads after an edit, so open forms keep their drafts.
-const { data: jobPage, refresh: refreshJobs } = usePoll((signal) => admin.jobs({ vodId: props.id, limit: 20 }, signal), 5_000)
-const jobs = computed(() => jobPage.value?.data ?? vod.value?.jobs ?? [])
+const { data: jobPage, refresh: refreshJobs } = usePoll((signal) => platform.jobs({ subject: vodSubject(props.id), limit: 20 }, signal), 5_000)
+const jobs = computed(() => jobPage.value?.items ?? [])
 const activeJobs = computed(() => jobs.value.filter((j) => j.state === 'running' || j.state === 'queued' || j.state === 'paused').length)
 
 /** The spans doomtp-bot wasn't listening, as text. */
@@ -95,7 +95,7 @@ onMounted(() => (document.title = `VOD ${props.id} · Manage · vods.vexoulz.net
   <ManageShell :title="`VOD ${id}`">
     <template #actions>
       <VxButton :to="`/vods/${id}`">Watch page</VxButton>
-      <VxButton :to="`/manage/jobs?vodId=${id}`">All its jobs</VxButton>
+      <VxButton :to="`/manage/jobs?subject=${encodeURIComponent(vodSubject(id))}`">All its jobs</VxButton>
     </template>
     <p class="back"><RouterLink to="/manage/vods">← VODs</RouterLink></p>
 
@@ -157,7 +157,7 @@ onMounted(() => (document.title = `VOD ${props.id} · Manage · vods.vexoulz.net
 
       <section class="panel vx-panel">
         <h2 class="vx-eyebrow">Jobs <span v-if="activeJobs" class="vx-muted">· {{ activeJobs }} active</span></h2>
-        <JobsTable :jobs="jobs" empty="No jobs for this VOD." />
+        <JobsTable :jobs="jobs" empty="No jobs for this VOD." label="This VOD's jobs" />
       </section>
 
       <!-- A VOD merged into another has no chapters, uploads or emotes of its own left to edit. -->

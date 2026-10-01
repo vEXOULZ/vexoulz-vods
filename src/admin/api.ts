@@ -3,46 +3,8 @@ import type { RawDrive, RawEmoteSets, RawVod } from '@vexoulz/vods-core'
 // Client for twitch-archive's worker admin API, as described in docs/admin-api.md. The browser holds no key: a
 // password login gives it an HttpOnly session cookie, and every change carries the session's CSRF token.
 
+/** A v1 job state, as /admin/health counts and /admin/storage folders report them (`done` is v2's `succeeded`). */
 export type JobState = 'queued' | 'running' | 'paused' | 'done' | 'failed' | 'cancelled'
-export const JOB_STATES: readonly JobState[] = ['queued', 'running', 'paused', 'done', 'failed', 'cancelled']
-
-export interface Job {
-  id: number
-  kind: string
-  vodId: string | null
-  state: JobState
-  /** The next step to run (the current one while running). */
-  step: string | null
-  attempts: number
-  lastError: string | null
-  payload: Record<string, unknown>
-  notBefore: string | null
-  pauseBefore: string[] | null
-  pauseNext: boolean
-  steps: string[]
-  createdAt: string | null
-  updatedAt: string | null
-}
-
-export interface JobList {
-  counts: Record<JobState, number>
-  data: Job[]
-}
-
-export interface JobKind {
-  steps: string[]
-  /** Steps the job pauses before by default. */
-  manualSteps: string[]
-}
-
-export interface JobEvent {
-  seq: number
-  at: string
-  level: 'info' | 'warning' | 'error'
-  step: string | null
-  message: string
-  progress: { done: number; total: number; unit: string } | null
-}
 
 export interface Session {
   authenticated: boolean
@@ -72,22 +34,14 @@ export interface Health {
   api: { ok: boolean } | null
   youtube: { authorized: boolean; valid: boolean; error: string | null; checkedAt?: string | null } | null
   live: { live: boolean; streamId: string | null; startedAt: string | null } | null
-  jobs: { counts: Record<JobState, number>; recentFailures: Job[] }
+  /** Counts over every job, legacy ones too; the job runs themselves come from /api/v2/jobs (platform.ts). */
+  jobs: { counts: Partial<Record<JobState, number>> }
 }
 
 export interface ActionResult {
   error: false
   msg: string
   jobId?: number
-}
-
-export interface LaunchJob {
-  kind: string
-  vodId?: string
-  payload?: Record<string, unknown>
-  fromStep?: string
-  pauseBefore?: string[]
-  paused?: boolean
 }
 
 /** GET /admin/vods/{id}: the VOD as the public API renders it, plus what only admins need. */
@@ -111,8 +65,6 @@ export interface AdminVod extends RawVod {
   chaptersLocked: boolean
   /** Null (or missing, from older workers) until a bot_chat job has read it. */
   botChat?: BotChatInfo | null
-  /** Recent jobs for this VOD, newest first. */
-  jobs: Job[]
   /** Merges and splits touching this VOD, oldest first (undone ones included, with `undoneAt`). */
   splices?: Splice[]
 }
@@ -299,40 +251,6 @@ export interface AdminEmotes extends RawEmoteSets {
   updatedAt?: string
 }
 
-/** A row of the worker's audit log, as `GET /api/v2/audit` serves it (vex-platform's shape, snake_case). */
-export interface AuditEntry {
-  id: number
-  /** ISO 8601 UTC. */
-  at: string
-  /**
-   * What authenticated: `user` (a dashboard login; `actor_id` is the Twitch id, or "password"), `api_key`, or the
-   * worker itself (`system`, `job`).
-   */
-  actor_kind: 'user' | 'api_key' | 'system' | 'job' | 'anonymous'
-  actor_id: string | null
-  /** The Twitch login of whoever signed in, when there was one (older entries have none). */
-  actor_login: string | null
-  via: string
-  /** Dotted, e.g. "vod.update", "job.enqueue", "request.denied". */
-  action: string
-  /** "vod:<id>", "job:<id>" or null. */
-  target: string | null
-  scope: string | null
-  /** "ok", "denied" or "failed". */
-  outcome: string
-  before: unknown
-  after: unknown
-  detail: unknown
-  request_id: string | null
-  job_run_id: number | null
-}
-
-export interface AuditPage {
-  items: AuditEntry[]
-  /** Pass back as `cursor` for the next (older) page; null on the last. */
-  next_cursor: string | null
-}
-
 export class AdminApiError extends Error {
   constructor(
     readonly status: number,
@@ -425,41 +343,6 @@ export class AdminClient {
   }
   youtubeAuthUrl(): Promise<{ url: string }> {
     return this.request('GET', '/admin/youtube/auth')
-  }
-
-  // ---- jobs ----
-  kinds(signal?: AbortSignal): Promise<Record<string, JobKind>> {
-    return this.request('GET', '/admin/kinds', undefined, signal)
-  }
-  jobs(q: { state?: string; vodId?: string; kind?: string; limit?: number; before?: number } = {}, signal?: AbortSignal): Promise<JobList> {
-    const params = new URLSearchParams()
-    for (const [k, v] of Object.entries(q)) if (v !== undefined && v !== '') params.set(k, String(v))
-    const qs = params.toString()
-    return this.request('GET', `/admin/jobs${qs ? `?${qs}` : ''}`, undefined, signal)
-  }
-  job(id: number, signal?: AbortSignal): Promise<Job> {
-    return this.request('GET', `/admin/jobs/${id}`, undefined, signal)
-  }
-  jobEvents(id: number, after = 0, signal?: AbortSignal): Promise<{ data: JobEvent[]; next: number }> {
-    return this.request('GET', `/admin/jobs/${id}/events?after=${after}`, undefined, signal)
-  }
-  launch(job: LaunchJob): Promise<ActionResult> {
-    return this.request('POST', '/admin/jobs', job)
-  }
-  pause(id: number): Promise<ActionResult> {
-    return this.request('POST', `/admin/jobs/${id}/pause`)
-  }
-  resume(id: number, once = false): Promise<ActionResult> {
-    return this.request('POST', `/admin/jobs/${id}/resume`, { once })
-  }
-  retry(id: number): Promise<ActionResult> {
-    return this.request('POST', `/admin/jobs/${id}/retry`)
-  }
-  cancel(id: number): Promise<ActionResult> {
-    return this.request('POST', `/admin/jobs/${id}/cancel`)
-  }
-  updateJob(id: number, patch: { pauseBefore?: string[] | null; pauseNext?: boolean }): Promise<Job> {
-    return this.request('PATCH', `/admin/jobs/${id}`, patch)
   }
 
   // ---- VODs ----
@@ -586,26 +469,6 @@ export class AdminClient {
   deleteFolder(area: string, name: string): Promise<{ path: string; bytes: number; files: number }> {
     return this.request('DELETE', `/admin/storage/${enc(area)}/${enc(name)}`)
   }
-
-  // ---- audit ----
-  /** Newest first, every actor (the worker's own jobs too). Older pages: pass the last page's `next_cursor`. */
-  audit(q: { cursor?: string | null; limit?: number } = {}, signal?: AbortSignal): Promise<AuditPage> {
-    const params = new URLSearchParams()
-    if (q.cursor) params.set('cursor', q.cursor)
-    if (q.limit) params.set('limit', String(q.limit))
-    const qs = params.toString()
-    return this.request('GET', `/api/v2/audit${qs ? `?${qs}` : ''}`, undefined, signal)
-  }
 }
 
 const enc = encodeURIComponent
-
-/** What an admin can do with a job in its state (mirrors the worker's rules). */
-export function jobActions(job: Pick<Job, 'state'>) {
-  return {
-    pause: job.state === 'queued' || job.state === 'running',
-    resume: job.state === 'paused',
-    retry: job.state === 'failed' || job.state === 'cancelled',
-    cancel: job.state === 'queued' || job.state === 'paused' || job.state === 'running',
-  }
-}

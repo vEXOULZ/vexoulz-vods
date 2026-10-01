@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { chatName, chatSourceFor, readSaved, WIDTH_DEFAULT } from '@/composables/useChatSettings'
+import { chatName } from '@vexoulz/platform-web/chat'
+import { chatSourceFor, readSaved, WIDTH_DEFAULT } from '@/composables/useChatSettings'
 
 describe('chatSourceFor', () => {
   it('asks for the choice as is until the VOD says which chats it has', () => {
@@ -15,6 +16,7 @@ describe('chatSourceFor', () => {
   })
 })
 
+// The site's name setting relies on the library's rule; checked here because the setting is the site's.
 describe('chatName', () => {
   it('shows the display name, the username, or both', () => {
     expect(chatName('Chat_Er', 'chat_er', 'display')).toEqual({ name: 'Chat_Er', login: null })

@@ -3,12 +3,12 @@
 // back down. Settings (which recording, delay, timestamps, badges, names, name colours, emote sources, size) are
 // the viewer's own. The live recording (doomtp-bot's) also has notices (subs, raids, redemptions), rewards, bits and
 // removed messages; the VOD recording (Twitch's replay) has none of those.
-import { twitchColor, VxButton, VxChip, VxPopover, VxSegmented, VxSlider, VxStepper, VxSwitch } from '@vexoulz/ui'
-import { toClock, type ChatMessage, type ChatSource, type ChatSources, type EmoteToken, type Removal } from '@vexoulz/vods-core'
+import { VxButton, VxChip, VxPopover, VxSegmented, VxSlider, VxStepper, VxSwitch } from '@vexoulz/ui'
+import { toClock, type ChatMessage, type ChatSource, type ChatSources, type EmoteToken } from '@vexoulz/vods-core'
+import { ChatLine } from '@vexoulz/platform-web/vue'
 import { computed, nextTick, ref, shallowRef, watch } from 'vue'
-import ChatEmote from './ChatEmote.vue'
 import EmoteMenu from './EmoteMenu.vue'
-import { chatName, DELAY_LIMIT, WIDTH_DEFAULT, WIDTH_MAX, WIDTH_MIN, type ChatSettings } from '@/composables/useChatSettings'
+import { DELAY_LIMIT, WIDTH_DEFAULT, WIDTH_MAX, WIDTH_MIN, type ChatSettings } from '@/composables/useChatSettings'
 
 const props = defineProps<{
   messages: ChatMessage[]
@@ -87,15 +87,6 @@ const names = computed<ChatSettings['names']>({
   },
 })
 
-function removedNote(r: Removal): string {
-  const what =
-    r.type === 'timeout' ? `Timed out${r.seconds ? ` for ${r.seconds}s` : ''}`
-    : r.type === 'ban' ? 'Banned'
-    : r.type === 'delete' ? 'Deleted by a moderator'
-    : 'Cleared by a moderator'
-  return r.reason ? `${what}: ${r.reason}` : what
-}
-
 const sizeOpts = [
   { value: 's' as const, label: 'S' },
   { value: 'm' as const, label: 'M' },
@@ -165,41 +156,20 @@ const sizeOpts = [
     <div ref="lines" class="lines" aria-live="off" @scroll.passive="onScroll">
       <p v-if="error" class="note vx-muted">Chat couldn't load: {{ error }}</p>
       <p v-else-if="!messages.length" class="note vx-muted">{{ playing ? 'No chat here yet.' : 'Chat plays along with the video.' }}</p>
-      <div
+      <ChatLine
         v-for="m in messages"
         :key="m.id"
         class="line"
-        :class="{ notice: m.kind === 'notice', removed: m.removed }"
-
+        :line="m"
+        :badges="settings.badges"
+        :colors="settings.colors"
+        :names="names"
+        :emotes="settings.emotes"
+        :open-token="menu?.token ?? null"
+        @emote-menu="toggleMenu"
       >
-        <span v-if="settings.timestamps" class="ts vx-mono">{{ toClock(m.at) }}</span>
-        <template v-if="m.kind === 'message'">
-          <span v-if="m.reward" class="reward">{{ m.reward.title }}<template v-if="m.reward.cost"> · {{ m.reward.cost }}</template></span>
-          <span v-if="settings.badges && m.badges.length" class="badges">
-            <img v-for="b in m.badges" :key="b.setId" :src="b.src" :srcset="b.srcset" :alt="b.title" :title="b.title" width="18" height="18" loading="lazy" />
-          </span>
-          <span class="who" :class="{ me: m.action }" :style="{ color: twitchColor(m.user, m.color, settings.colors) }"
-            >{{ chatName(m.user, m.login, settings.names).name
-            }}<span v-if="chatName(m.user, m.login, settings.names).login" class="login">
-              ({{ chatName(m.user, m.login, settings.names).login }})</span
-            ></span
-          >
-          <span v-if="m.bits" class="bits vx-mono">{{ m.bits }} bits</span>
-        </template>
-        <span class="text" :class="{ me: m.action }" :style="m.action ? { color: twitchColor(m.user, m.color, settings.colors) } : undefined">
-          <template v-for="(t, j) in m.tokens" :key="j">
-            <ChatEmote
-              v-if="t.kind === 'emote'"
-              :token="t"
-              :enabled="settings.emotes"
-              :open="menu?.token === t"
-              @menu="toggleMenu(t, $event)"
-            />
-            <span v-else>{{ t.text }}</span>
-          </template>
-        </span>
-        <span v-if="m.removed" class="why vx-muted small">{{ removedNote(m.removed) }}</span>
-      </div>
+        <template v-if="settings.timestamps" #before><span class="ts vx-mono">{{ toClock(m.at) }}</span></template>
+      </ChatLine>
     </div>
     <EmoteMenu v-if="menu" :token="menu.token" :anchor="menu.anchor" :enabled="settings.emotes" @close="menu = null" />
     <VxButton v-if="!following" class="jump" size="sm" variant="primary" @click="toBottom">↓ Latest messages</VxButton>
@@ -228,19 +198,5 @@ const sizeOpts = [
 .size-l .lines { font-size: 15px; }
 .note { margin: auto; text-align: center; font-size: 13px; }
 .ts { color: var(--vx-muted); font-size: 10px; margin-right: 6px; opacity: 0.7; }
-.badges { display: inline-flex; gap: 2px; vertical-align: -3px; margin-right: 4px; }
-.badges img { width: 18px; height: 18px; }
-.who { font-weight: 700; }
-.who::after { content: ':'; color: var(--vx-muted); margin-right: 5px; }
-.who.me::after { content: ''; }
-.login { font-weight: 400; color: var(--vx-muted); }
-.text.me { font-style: italic; }
-.reward, .bits {
-  display: inline-block; margin-right: 5px; padding: 0 5px; border-radius: 4px; font-size: 0.85em; line-height: 1.5;
-  background: color-mix(in srgb, var(--vx-accent) 18%, transparent); color: var(--vx-ink);
-}
-.notice { padding: 2px 8px; border-left: 2px solid var(--vx-accent); background: color-mix(in srgb, var(--vx-accent) 8%, transparent); color: var(--vx-muted); }
-.removed .text { text-decoration: line-through; opacity: 0.55; }
-.why { margin-left: 6px; font-style: italic; }
 .jump { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); }
 </style>
