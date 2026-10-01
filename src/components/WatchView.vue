@@ -144,7 +144,16 @@ const chapters = computed(() => props.timeline.chapters.filter((c) => c.end > ra
 const chapter = computed(() => props.timeline.chapterAt(time.value))
 const chapterIdx = computed(() => (chapter.value ? chapters.value.indexOf(chapter.value) : -1))
 /** Where one source VOD hands over to the next, on a synthetic VOD. */
-const segmentMarks = computed(() => props.segments?.segmentSpans().slice(1).map((s) => s.start) ?? [])
+/** A playthrough's streams (a merge or split plays as one VOD, so it has none to tell apart). */
+const streams = computed(() => (props.segments && !props.vod.synthetic?.supersedes ? props.segments.streams() : []))
+/** Where each stream after the first starts: a break on the bar. */
+const streamBreaks = computed(() => streams.value.slice(1).map((s) => s.start))
+/** "S2" for a chapter of the second stream, when there's more than one. */
+function chapterStream(c: { start: number }): string | null {
+  if (streams.value.length < 2) return null
+  const s = props.segments?.segmentAt(c.start)?.segment.stream
+  return s == null ? null : `S${s + 1}`
+}
 const palette = computed(() => gamePalette(props.timeline.chapters.map((c) => c.name)))
 const posterGames = computed(() => gamesWithArt(chapters.value).map((g) => ({ ...g, color: palette.value.get(g.name) })))
 watchEffect(() => learnGameColors(posterGames.value))
@@ -182,18 +191,26 @@ const downloadUrl = computed(() => (props.download ? `https://drive.google.com/o
 
 // ---- related VODs ----
 const sourceById = computed(() => new Map(props.sources.map((s) => [s.id, s])))
-const shortDate = (d: Date) => d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
-/** A playthrough's streams (a merge or split replaces its VODs, so those aren't linked: they lead back here). */
+const shortDate = (d: Date) => d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+/**
+ * A playthrough's streams: picking one plays it here, and the arrow beside it opens the VOD it comes from. (A merge
+ * or split replaces its VODs, so those aren't listed: they lead back here.)
+ */
 const madeOf = computed(() => {
-  if (!props.segments || props.vod.synthetic?.supersedes) return []
-  return props.segments.segments.map((s, i) => {
-    const src = sourceById.value.get(s.vodId)
+  const segs = props.segments?.segments ?? []
+  return streams.value.map((st, i) => {
+    const first = segs[st.segment]!
+    const last = segs.filter((s) => s.stream === st.stream).at(-1) ?? first
+    const src = sourceById.value.get(st.vodId)
     return {
-      key: `${i}:${s.vodId}`,
-      title: s.label ?? src?.title ?? s.vodId,
-      sub: `${src ? shortDate(src.createdAt) : s.vodId} · ${toClock(s.start)}–${toClock(s.end)}`,
-      to: src ? watchPath(src, s.start) : watchPath({ id: s.vodId, uploads: [] }, s.start),
-      at: s.at,
+      key: `${st.stream}:${st.vodId}`,
+      mark: `S${st.stream + 1}`,
+      title: first.label ?? src?.title ?? st.vodId,
+      sub: src ? shortDate(src.createdAt) : '',
+      range: `${toClock(first.start)}–${toClock(last.end)} of the VOD`,
+      original: src ? watchPath(src, first.start) : watchPath({ id: st.vodId, uploads: [] }, first.start),
+      at: st.start,
+      current: time.value >= st.start && (i === streams.value.length - 1 || time.value < streams.value[i + 1]!.start),
     }
   })
 })
@@ -290,7 +307,7 @@ useShortcuts(() => shortcuts.value)
             :status="status"
             :part-index="partIndex"
             :part-label="partLabel"
-            :marks="segmentMarks"
+            :breaks="streamBreaks"
             :palette="palette"
             :playing="playing"
             :rate="rate"
@@ -313,7 +330,7 @@ useShortcuts(() => shortcuts.value)
                     :key="i"
                     :current="i === chapterIdx"
                     :disabled="c.restricted"
-                    :sub="toClock(c.start)"
+                    :sub="chapterStream(c) ? `${chapterStream(c)} · ${toClock(c.start)}` : toClock(c.start)"
                     @click="seek(Math.max(c.start, range.start)); close()"
                   >
                     <template #lead>
@@ -327,7 +344,7 @@ useShortcuts(() => shortcuts.value)
               <div class="now-text">
                 <div class="title" :title="vod.title">{{ vod.title }}</div>
                 <div class="sub vx-mono vx-muted">
-                  <template v-if="chapter">ch {{ chapterIdx + 1 }}/{{ chapters.length }} · {{ chapter.name }} · </template>{{ toClock(partOffset) }} into {{ label(partIndex).toLowerCase() }}
+                  <template v-if="chapter">ch {{ chapterIdx + 1 }}/{{ chapters.length }} · {{ chapter.name }} · </template>{{ toClock(partOffset) }} into {{ partLabel ? label(partIndex) : label(partIndex).toLowerCase() }}
                 </div>
               </div>
             </div>
@@ -366,7 +383,13 @@ useShortcuts(() => shortcuts.value)
               <template #default="{ close }">
                 <template v-if="madeOf.length">
                   <div class="vx-eyebrow menu-head">Streams · {{ madeOf.length }}</div>
-                  <VxMenuItem v-for="m in madeOf" :key="m.key" :to="m.to" :sub="m.sub" @click="close()">{{ m.title }}</VxMenuItem>
+                  <div v-for="m in madeOf" :key="m.key" class="stream-row">
+                    <VxMenuItem :current="m.current" :sub="m.sub" :title="`${m.title} · ${m.range}`" @click="seek(m.at); close()">
+                      <template #lead><span class="smark vx-mono">{{ m.mark }}</span></template>
+                      {{ m.title }}
+                    </VxMenuItem>
+                    <VxButton icon size="sm" variant="ghost" :to="m.original" label="Open the original VOD" @click="close()">↗</VxButton>
+                  </div>
                 </template>
                 <template v-if="appearsIn.length">
                   <div class="vx-eyebrow menu-head">Also in</div>
@@ -457,6 +480,10 @@ useShortcuts(() => shortcuts.value)
 .sub { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .partbtn { min-width: 92px; }
 .menu-head { padding: 6px 8px; }
+.stream-row { display: flex; align-items: center; gap: 2px; }
+.stream-row > :first-child { flex: 1; min-width: 0; }
+.smark { font-size: 11px; color: var(--vx-muted); min-width: 2.5ch; }
+.vx-menu-item.is-current .smark { color: var(--vx-accent); }
 .kv { display: flex; justify-content: space-between; gap: 10px; padding: 4px 8px; font-size: 12px; }
 
 .watch > :deep(.chat) { border-left: 1px solid var(--vx-line); }

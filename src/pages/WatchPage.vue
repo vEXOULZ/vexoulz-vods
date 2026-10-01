@@ -73,20 +73,13 @@ const other = computed(() => {
   return v.uploads.some((u) => u.type === alt) ? `/${alt === 'vod' ? 'vods' : 'live'}/${v.id}` : null
 })
 
-/** A playthrough's parts are named after their streams ("Stream 2 · 12 Sep"); a merge or split keeps "Part n". */
+/** A playthrough's parts are numbered within their stream: S1-P1, S1-P2, S2-P1… (a merge or split keeps P1, P2…). */
 const partLabel = computed(() => {
   const seg = segments.value
   if (!seg || vod.value?.synthetic?.supersedes) return undefined
-  const byId = new Map(sources.value.map((s) => [s.id, s]))
   return (i: number) => {
-    const c = seg.clips[i]
-    if (!c) return `Part ${i + 1}`
-    const s = seg.segments[c.segment]!
-    const src = byId.get(s.vodId)
-    const date = src?.createdAt.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
-    const name = s.label ?? (date ? `Stream ${c.segment + 1} · ${date}` : `Stream ${c.segment + 1}`)
-    const same = seg.clips.filter((x) => x.segment === c.segment)
-    return same.length > 1 ? `${name} (${same.indexOf(c) + 1}/${same.length})` : name
+    const at = seg.clipInStream(i)
+    return at ? `S${at.stream + 1}-P${at.part + 1}` : `P${i + 1}`
   }
 })
 

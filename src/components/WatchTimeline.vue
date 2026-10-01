@@ -16,8 +16,11 @@ const props = defineProps<{
   partIndex: number
   /** Label for part i (P1, or a game name on the games page). */
   partLabel?: (i: number) => string
-  /** VOD times where one source VOD hands over to the next (a synthetic VOD's segment starts). */
-  marks?: readonly number[]
+  /**
+   * Where a playthrough moves on to its next stream. Each gets a small hollow break with a jagged line: it takes room
+   * on the bar but no time (unlike a "stream down" gap inside a stream, which is time the stream was down).
+   */
+  breaks?: readonly number[]
   /** Colours per game (gamePalette of the VOD), shared with the posters. */
   palette: Map<string, string>
   /** The snail on the playhead crawls while this is on, and sleeps otherwise. */
@@ -28,15 +31,40 @@ const props = defineProps<{
 const emit = defineEmits<{ seek: [t: number] }>()
 
 const len = computed(() => Math.max(1, props.range.end - props.range.start))
-const pct = (t: number) => `${(clamp(t - props.range.start, 0, len.value) / len.value) * 100}%`
-const width = (a: number, b: number) => `${(Math.max(0, Math.min(b, props.range.end) - Math.max(a, props.range.start)) / len.value) * 100}%`
+/** Width of a stream break, in px: a fixed size reads the same on a 2 h playthrough as on a 40 h one. */
+const BREAK = 10
+const brks = computed(() => [...(props.breaks ?? [])].filter((b) => b > props.range.start && b < props.range.end).sort((a, b) => a - b))
+// A time's place on the bar: its share of the time (`f`), of the room left after the breaks, plus the breaks before
+// it (`k`). A time right on a break is after it; a chapter ending there ends before it (`end`).
+function at(t: number, end = false) {
+  const f = clamp(t - props.range.start, 0, len.value) / len.value
+  const k = brks.value.filter((b) => (end ? b < t : b <= t)).length
+  return { f, k }
+}
+const css = (f: number, k: number) => {
+  const px = k * BREAK - f * brks.value.length * BREAK
+  return px ? `calc(${f * 100}% ${px < 0 ? '-' : '+'} ${Math.abs(px)}px)` : `${f * 100}%`
+}
+const pct = (t: number) => {
+  const p = at(t)
+  return css(p.f, p.k)
+}
+const width = (a: number, b: number) => {
+  const p = at(Math.max(a, props.range.start))
+  const q = at(Math.min(b, props.range.end), true)
+  return css(Math.max(0, q.f - p.f), Math.max(0, q.k - p.k))
+}
+/** Each break, placed just before its stream starts. */
+const breakSpans = computed(() => brks.value.map((b, i) => ({ t: b, left: css(at(b).f, i) })))
 
 const chapters = computed(() => props.timeline.chapters.filter((c) => c.end > props.range.start && c.start < props.range.end))
 const spans = computed(() => props.timeline.partSpans())
 const label = (i: number) => props.partLabel?.(i) ?? `P${i + 1}`
+/** Part ticks, but not where a break already shows the change. */
+const ticks = computed(() => spans.value.slice(1).filter((s) => !brks.value.some((b) => Math.abs(b - s.start) < 0.5)))
 
 const track = ref<HTMLElement | null>(null)
-const hover = ref<{ x: number; t: number } | null>(null)
+const hover = ref<{ x: number; t: number; brk: boolean } | null>(null)
 const dragging = ref(false)
 
 // The snail floats while the time is being moved, and a moment after (so a click or a key shows it too).
@@ -66,11 +94,21 @@ watch(
   },
 )
 
-function timeAt(clientX: number): number {
+/** The time under a point of the bar; on a break, the start of the stream after it. */
+function pointAt(clientX: number): { t: number; brk: boolean } {
   const r = track.value!.getBoundingClientRect()
-  const f = clamp((clientX - r.left) / r.width, 0, 1)
-  return props.range.start + f * len.value
+  const x = clientX - r.left
+  const room = Math.max(1, r.width - brks.value.length * BREAK)
+  let k = 0
+  for (const b of brks.value) {
+    const bx = ((b - props.range.start) / len.value) * room + k * BREAK
+    if (x < bx) break
+    if (x < bx + BREAK) return { t: b, brk: true }
+    k++
+  }
+  return { t: props.range.start + clamp((x - k * BREAK) / room, 0, 1) * len.value, brk: false }
 }
+const timeAt = (clientX: number) => pointAt(clientX).t
 function onDown(e: PointerEvent) {
   if (e.button !== 0) return
   dragging.value = true
@@ -78,9 +116,8 @@ function onDown(e: PointerEvent) {
   onMove(e)
 }
 function onMove(e: PointerEvent) {
-  const t = timeAt(e.clientX)
   const r = track.value!.getBoundingClientRect()
-  hover.value = { x: e.clientX - r.left, t }
+  hover.value = { x: e.clientX - r.left, ...pointAt(e.clientX) }
 }
 function onUp(e: PointerEvent) {
   if (!dragging.value) return
@@ -166,8 +203,10 @@ const shownColor = computed(() => {
       <template v-for="(s, i) in spans" :key="'u' + i">
         <span v-if="unplayable(status[i])" class="unseg" :style="{ left: pct(s.start), width: width(s.start, s.end) }"></span>
       </template>
-      <span v-for="(s, i) in spans.slice(1)" :key="'t' + i" class="tick" :style="{ left: pct(s.start) }"></span>
-      <span v-for="(m, i) in marks ?? []" :key="'m' + i" class="mark" :style="{ left: pct(m) }"></span>
+      <span v-for="(s, i) in ticks" :key="'t' + i" class="tick" :style="{ left: pct(s.start) }"></span>
+      <span v-for="b in breakSpans" :key="'b' + b.t" class="brk" :style="{ left: b.left, width: `${BREAK}px` }">
+        <svg viewBox="0 0 6 20" preserveAspectRatio="none"><polyline points="3,0 1,3 5,7 1,11 5,15 1,18 3,20" /></svg>
+      </span>
       <span class="rest" :style="{ left: pct(shown) }"></span>
       <span class="played" :style="{ width: pct(shown) }"></span>
       <SnailMarker class="head" :mode="snailMode" :rate="rate" :shell="shownColor" :style="{ left: pct(shown) }" />
@@ -177,7 +216,7 @@ const shownColor = computed(() => {
         class="tip vx-mono"
         :style="{ left: `${hover.x}px`, translate: tipShift ? `${tipShift}px 0` : undefined }"
       >
-        {{ toClock(hover.t) }}<template v-if="hoverChapter?.kind === 'gap'"> · stream down</template><template v-else-if="hoverCut"> · cut from YouTube</template><template v-else-if="hoverChapter"> · {{ hoverChapter.name }}</template>
+        <template v-if="hover.brk">stream change</template><template v-else>{{ toClock(hover.t) }}<template v-if="hoverChapter?.kind === 'gap'"> · stream down</template><template v-else-if="hoverCut"> · cut from YouTube</template><template v-else-if="hoverChapter"> · {{ hoverChapter.name }}</template></template>
       </span>
     </div>
   </div>
@@ -202,8 +241,11 @@ const shownColor = computed(() => {
 .seg.gap { background: radial-gradient(circle, rgb(255 255 255 / 0.35) 1px, transparent 1.5px) 0 50% / 5px 100% repeat-x; }
 .unseg { position: absolute; top: 0; bottom: 0; pointer-events: none; background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--vx-bad) 55%, transparent) 0 2px, rgb(0 0 0 / 0.65) 2px 6px); }
 .tick { position: absolute; top: -9px; bottom: -2px; width: 1px; background: var(--vx-muted); pointer-events: none; }
-/* Where a synthetic VOD moves on to its next stream: brighter and wider than a part tick. */
-.mark { position: absolute; top: -12px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--vx-accent); pointer-events: none; }
+/* Between two streams of a playthrough: an empty notch in the bar with a jagged line down it. It's no time, so it
+   isn't hatched or dotted like the gaps and cuts that are. */
+.brk { position: absolute; top: -3px; bottom: -3px; z-index: 1; pointer-events: none; background: var(--vx-bg); color: var(--vx-muted); }
+.brk svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.brk polyline { fill: none; stroke: currentColor; stroke-width: 1.2; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
 /* Progress never paints over the chapter colours: what's still ahead is dimmed, and a thin accent line runs under
    what's been played. */
 .rest { position: absolute; right: 0; top: 0; bottom: 0; background: rgb(0 0 0 / 0.55); pointer-events: none; }
