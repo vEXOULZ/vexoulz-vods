@@ -61,7 +61,7 @@ const src = computed(() => {
 const textStyle = computed(() => ({
   fontSize: `${props.tag.textSize ?? Math.round(h.value / 2)}px`,
   color: props.tag.textColor,
-  transform: `translate(${props.tag.textX ?? 0}px, ${props.tag.textY ?? 0}px)`,
+  transform: `translate(${props.tag.textX ?? 0}px, ${props.tag.textY ?? 0}px) rotate(${props.tag.textRotate ?? 0}deg)`,
 }))
 </script>
 

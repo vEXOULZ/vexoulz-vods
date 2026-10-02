@@ -11,7 +11,7 @@ import { admin } from '@/admin/session'
 import { blankDraft, draftsOf, previewOf, rawOf, tagChanges, type TagDraft, type TagField } from '@/admin/tags'
 import TagMark from '@/components/TagMark.vue'
 import { errorMessage } from '@/lib/errors'
-import { loadTagConfig, TAG_PATTERN_SIZE, TAG_SIZE, TAG_TEXT_MAX, TAG_TEXT_NUDGE, TAG_TEXT_SIZE, type TagPattern } from '@/lib/vodTags'
+import { loadTagConfig, TAG_PATTERN_SIZE, TAG_SIZE, TAG_TEXT_MAX, TAG_TEXT_NUDGE, TAG_TEXT_ROTATE, TAG_TEXT_SIZE, type TagPattern } from '@/lib/vodTags'
 import { site, vodsConfig } from '@/vods.config'
 
 const toast = useToast()
@@ -235,6 +235,9 @@ onMounted(() => {
               </VxField>
               <VxField label="Nudge down" :error="err(d, 'textY')" help="px from the middle; + is down">
                 <template #default="{ id }"><VxInput :id="id" v-model="d.textY" type="number" mono :invalid="!!err(d, 'textY')" placeholder="0" /></template>
+              </VxField>
+              <VxField label="Rotate" :error="err(d, 'textRotate')" :help="`degrees, ${TAG_TEXT_ROTATE.min} to ${TAG_TEXT_ROTATE.max}; + is clockwise`">
+                <template #default="{ id }"><VxInput :id="id" v-model="d.textRotate" type="number" mono :invalid="!!err(d, 'textRotate')" placeholder="0" /></template>
               </VxField>
             </template>
           </template>

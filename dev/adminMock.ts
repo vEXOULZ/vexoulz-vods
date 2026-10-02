@@ -525,10 +525,10 @@ function checkSetting(key: string, v: unknown): string | null {
 // ---- site tags (docs/admin-api.md, "Site tags"); MOCK_SITE_TAGS=no answers 404, like an archive without them ----
 interface SiteTag {
   name: string; label: string; drawn: boolean; color: string | null; width: number | null; height: number | null
-  text: string | null; textColor: string | null; textSize: number | null; textX: number | null; textY: number | null
+  text: string | null; textColor: string | null; textSize: number | null; textX: number | null; textY: number | null; textRotate: number | null
   pattern: 'stripes' | 'checks' | null; patternColor: string | null; patternSize: number | null
 }
-const NO_TEXT = { text: null, textColor: null, textSize: null, textX: null, textY: null, pattern: null, patternColor: null, patternSize: null }
+const NO_TEXT = { text: null, textColor: null, textSize: null, textX: null, textY: null, textRotate: null, pattern: null, patternColor: null, patternSize: null }
 let siteTags: SiteTag[] = [
   { name: 'new', label: 'new', drawn: true, color: 'var(--vx-accent)', width: null, height: null, ...NO_TEXT },
   { name: 'updated', label: 'updated', drawn: true, color: 'var(--vx-info)', width: null, height: null, ...NO_TEXT },
@@ -596,8 +596,9 @@ function checkTags(list: unknown): SiteTag[] | string {
     if (t.pattern != null && t.pattern !== 'stripes' && t.pattern !== 'checks') return `${t.name}: pattern must be stripes, checks or null`
     if (t.patternColor != null && (typeof t.patternColor !== 'string' || !isTagColor(t.patternColor))) return `${t.name}: patternColor is not a color the site takes`
     if (t.patternSize != null && !(Number.isInteger(t.patternSize) && t.patternSize >= 2 && t.patternSize <= 40)) return `${t.name}: patternSize must be 2–40`
+    if (t.textRotate != null && !(Number.isInteger(t.textRotate) && t.textRotate >= -180 && t.textRotate <= 180)) return `${t.name}: textRotate must be -180 to 180`
     const pattern = t.pattern ? { pattern: t.pattern, patternColor: t.patternColor ?? null, patternSize: t.patternSize ?? null } : { pattern: null, patternColor: null, patternSize: null }
-    const style = text ? { textColor: t.textColor ?? null, textSize: t.textSize ?? null, textX: t.textX ?? null, textY: t.textY ?? null } : NO_TEXT
+    const style = text ? { textColor: t.textColor ?? null, textSize: t.textSize ?? null, textX: t.textX ?? null, textY: t.textY ?? null, textRotate: t.textRotate ?? null } : NO_TEXT
     out.push({ name: t.name, label: t.label.trim(), drawn: t.drawn, color: t.color ?? null, width: t.width ?? null, height: t.height ?? null, ...style, text, ...pattern })
   }
   const gone = ['new', 'updated', 'compilation'].find((name) => !seen.has(name))

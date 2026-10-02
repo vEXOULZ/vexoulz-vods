@@ -5,7 +5,7 @@ import { fromRaw, isTagColor, loadTagConfig, tagConfig, type RawTag } from '@/li
 import { site } from '@/vods.config'
 
 const raw = (o: Partial<RawTag> = {}): RawTag => ({ name: 'new', label: 'new', drawn: true, color: null, shape: null, width: null, height: null, ...NO_TEXT, ...NO_PATTERN, ...o })
-const NO_TEXT = { text: null, textColor: null, textSize: null, textX: null, textY: null }
+const NO_TEXT = { text: null, textColor: null, textSize: null, textX: null, textY: null, textRotate: null }
 const NO_PATTERN = { pattern: null, patternColor: null, patternSize: null }
 const json = (status: number, body: unknown) => vi.fn(async (_u: string, _i?: RequestInit) => new Response(JSON.stringify(body), { status }))
 
@@ -30,13 +30,13 @@ describe('fromRaw', () => {
   it('takes the text on a tag, within its limits', () => {
     const out = fromRaw(
       [
-        raw({ text: '  100%  ', textColor: 'var(--vx-ink)', textSize: 12, textX: -3, textY: 2 }),
-        raw({ name: 'x', text: 'y'.repeat(30), textColor: 'url(x)', textSize: 99, textX: 1.5, textY: 500 }),
+        raw({ text: '  100%  ', textColor: 'var(--vx-ink)', textSize: 12, textX: -3, textY: 2, textRotate: -15 }),
+        raw({ name: 'x', text: 'y'.repeat(30), textColor: 'url(x)', textSize: 99, textX: 1.5, textY: 500, textRotate: 181 }),
       ],
       '',
     )
-    expect(out.new).toMatchObject({ text: '100%', textColor: 'var(--vx-ink)', textSize: 12, textX: -3, textY: 2 })
-    expect(out.x).toMatchObject({ text: 'y'.repeat(24), textColor: undefined, textSize: undefined, textX: undefined, textY: undefined })
+    expect(out.new).toMatchObject({ text: '100%', textColor: 'var(--vx-ink)', textSize: 12, textX: -3, textY: 2, textRotate: -15 })
+    expect(out.x).toMatchObject({ text: 'y'.repeat(24), textColor: undefined, textSize: undefined, textX: undefined, textY: undefined, textRotate: undefined })
   })
 })
 
@@ -111,11 +111,11 @@ describe('tagChanges', () => {
   })
   it('saves text only while it is on', () => {
     const drafts = saved.map((t) => draftOf(t))
-    Object.assign(drafts[0]!, { textOn: true, text: ' 100% ', textColor: 'var(--vx-ink)', textSize: 12, textX: '-4', textY: '' })
+    Object.assign(drafts[0]!, { textOn: true, text: ' 100% ', textColor: 'var(--vx-ink)', textSize: 12, textX: '-4', textY: '', textRotate: '30' })
     Object.assign(drafts[1]!, { textOn: false, text: 'kept', textSize: '999' })
     const r = tagChanges(saved, drafts)
     expect(r.errors.size).toBe(0)
-    expect(r.body[0]).toMatchObject({ text: '100%', textColor: 'var(--vx-ink)', textSize: 12, textX: -4, textY: null })
+    expect(r.body[0]).toMatchObject({ text: '100%', textColor: 'var(--vx-ink)', textSize: 12, textX: -4, textY: null, textRotate: 30 })
     expect(r.body[1]).toMatchObject(NO_TEXT)
     expect(previewOf(drafts[0]!, '').text).toBe('100%')
     expect(previewOf(drafts[1]!, '').text).toBeUndefined()
@@ -140,9 +140,9 @@ describe('tagChanges', () => {
     expect([out.x!.pattern, out.x!.patternSize]).toEqual([undefined, undefined])
   })
   it('flags bad text fields', () => {
-    const d = Object.assign(draftOf(saved[0]!), { textOn: true, text: ' ', textColor: 'url(x)', textSize: 5, textX: 101, textY: '1.5' })
+    const d = Object.assign(draftOf(saved[0]!), { textOn: true, text: ' ', textColor: 'url(x)', textSize: 5, textX: 101, textY: '1.5', textRotate: -181 })
     const r = tagChanges(saved, [d, draftOf(saved[1]!)])
-    expect(Object.keys(r.errors.get(d.key)!)).toEqual(['text', 'textColor', 'textSize', 'textX', 'textY'])
+    expect(Object.keys(r.errors.get(d.key)!)).toEqual(['text', 'textColor', 'textSize', 'textX', 'textY', 'textRotate'])
   })
   it('starts from site.tags and previews a draft', () => {
     const list = rawOf(site.tags)

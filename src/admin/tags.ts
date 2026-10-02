@@ -2,7 +2,7 @@
 // the list PUT /admin/site/tags takes.
 import type { TagInput } from './api'
 import {
-  AUTO_TAGS, isAutoTag, isTagColor, TAG_LABEL_MAX, TAG_NAME, TAG_SIZE, TAG_TEXT_MAX, TAG_TEXT_NUDGE, TAG_TEXT_SIZE,
+  AUTO_TAGS, isAutoTag, isTagColor, TAG_LABEL_MAX, TAG_NAME, TAG_SIZE, TAG_TEXT_MAX, TAG_TEXT_NUDGE, TAG_TEXT_ROTATE, TAG_TEXT_SIZE,
   TAG_PATTERN_SIZE, TAG_PATTERNS, type RawTag, type TagPattern,
 } from '@/lib/vodTags'
 import { site, type TagStyle } from '@/vods.config'
@@ -26,6 +26,7 @@ export interface TagDraft {
   textSize: Typed
   textX: Typed
   textY: Typed
+  textRotate: Typed
   /** '' for plain; its color and size are kept while it's off but not saved. */
   pattern: TagPattern | ''
   patternColor: string
@@ -38,9 +39,9 @@ export interface TagDraft {
   auto: boolean
 }
 
-export type TagField = 'name' | 'label' | 'color' | 'width' | 'height' | 'text' | 'textColor' | 'textSize' | 'textX' | 'textY' | 'patternColor' | 'patternSize'
+export type TagField = 'name' | 'label' | 'color' | 'width' | 'height' | 'text' | 'textColor' | 'textSize' | 'textX' | 'textY' | 'textRotate' | 'patternColor' | 'patternSize'
 
-const NO_TEXT = { text: null, textColor: null, textSize: null, textX: null, textY: null }
+const NO_TEXT = { text: null, textColor: null, textSize: null, textX: null, textY: null, textRotate: null }
 const NO_PATTERN = { pattern: null, patternColor: null, patternSize: null }
 const bare = (name: string, label: string, drawn: boolean): RawTag => ({
   name, label, drawn, color: null, shape: null, width: null, height: null, ...NO_TEXT, ...NO_PATTERN,
@@ -62,6 +63,7 @@ export const draftOf = (t: RawTag, saved = true): TagDraft => ({
   textSize: typed(t.textSize),
   textX: typed(t.textX),
   textY: typed(t.textY),
+  textRotate: typed(t.textRotate),
   pattern: t.pattern ?? '',
   patternColor: t.patternColor ?? '',
   patternSize: typed(t.patternSize),
@@ -75,7 +77,7 @@ export const blankDraft = (): TagDraft => draftOf(bare('', '', true), false)
 export const rawOf = (tags: Record<string, TagStyle>): RawTag[] =>
   Object.entries(tags).map(([name, s]) => ({
     name, label: s.label, drawn: s.drawn, color: s.color ?? null, shape: null, width: s.width ?? null, height: s.height ?? null,
-    text: s.text ?? null, textColor: s.textColor ?? null, textSize: s.textSize ?? null, textX: s.textX ?? null, textY: s.textY ?? null,
+    text: s.text ?? null, textColor: s.textColor ?? null, textSize: s.textSize ?? null, textX: s.textX ?? null, textY: s.textY ?? null, textRotate: s.textRotate ?? null,
     pattern: s.pattern ?? null, patternColor: s.patternColor ?? null, patternSize: s.patternSize ?? null,
   }))
 
@@ -90,7 +92,7 @@ export function draftsOf(list: RawTag[]): TagDraft[] {
 
 const inputOf = (t: RawTag): TagInput => ({
   name: t.name, label: t.label, drawn: t.drawn, color: t.color, width: t.width, height: t.height,
-  text: t.text ?? null, textColor: t.textColor ?? null, textSize: t.textSize ?? null, textX: t.textX ?? null, textY: t.textY ?? null,
+  text: t.text ?? null, textColor: t.textColor ?? null, textSize: t.textSize ?? null, textX: t.textX ?? null, textY: t.textY ?? null, textRotate: t.textRotate ?? null,
   pattern: t.pattern ?? null, patternColor: t.patternColor ?? null, patternSize: t.patternSize ?? null,
 })
 
@@ -145,6 +147,7 @@ export function tagChanges(saved: RawTag[], drafts: TagDraft[]) {
       textSize: whole(d.textSize, TAG_TEXT_SIZE, () => flag(d.key, 'textSize', `${TAG_TEXT_SIZE.min}–${TAG_TEXT_SIZE.max} px`)),
       textX: nudge('textX'),
       textY: nudge('textY'),
+      textRotate: whole(d.textRotate, TAG_TEXT_ROTATE, () => flag(d.key, 'textRotate', `${TAG_TEXT_ROTATE.min} to ${TAG_TEXT_ROTATE.max}°`)),
     }
   })
   const changed = JSON.stringify(body) !== JSON.stringify(saved.map(inputOf))
@@ -173,6 +176,7 @@ export function previewOf(d: TagDraft, apiBase: string): TagStyle {
       textSize: n(d.textSize, TAG_TEXT_SIZE),
       textX: n(d.textX, TAG_TEXT_NUDGE),
       textY: n(d.textY, TAG_TEXT_NUDGE),
+      textRotate: n(d.textRotate, TAG_TEXT_ROTATE),
     }),
   }
 }
