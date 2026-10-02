@@ -10,7 +10,7 @@ export function gameTimeline(vod: Vod, game: GameUpload, opts: TimelineOptions =
     ...vod,
     duration: game.end,
     chapters: vod.chapters.map((c) => ({ ...c, restricted: false })),
-    uploads: [{ id: game.videoId, type: 'vod', part: 1, duration: Math.max(0, game.end - game.start), thumbnail: game.thumbnail }],
+    uploads: [{ id: game.videoId, type: 'vod', part: 1, duration: Math.max(0, game.end - game.start), thumbnail: game.thumbnail, preview: null }],
   }
   return new Timeline(synthetic, 'vod', opts)
 }

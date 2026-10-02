@@ -2,9 +2,10 @@
 // One bar for the whole VOD (all parts): chapters in their game colour, restricted chapters hatched, parts that
 // can't play hatched red, part labels above. Click, drag or use the arrow keys to seek (VOD seconds).
 import { clamp, clampX } from '@vexoulz/ui'
-import { toClock, type PartStatus, type PlayableTimeline, type Span } from '@vexoulz/vods-core'
+import { previewFrame, toClock, type PartStatus, type PlayableTimeline, type Span } from '@vexoulz/vods-core'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { unplayable } from '@/lib/cuts'
+import { vodsConfig } from '@/vods.config'
 import SnailMarker, { type SnailMode } from './SnailMarker.vue'
 
 const props = defineProps<{
@@ -214,6 +215,16 @@ watch(
 )
 const hoverChapter = computed(() => (hover.value ? props.timeline.chapterAt(hover.value.t) : null))
 const hoverCut = computed(() => (hover.value ? props.timeline.cutAt(hover.value.t) : null))
+// The frame under the pointer, from the archive's preview sheets of the upload there; none over a break, a jump,
+// a gap, a cut or a part that can't play.
+const hoverPreview = computed(() => {
+  const h = hover.value
+  if (!h || h.brk || h.jump || hoverChapter.value?.kind === 'gap' || hoverCut.value) return null
+  const pos = props.timeline.locate(h.t)
+  const upload = props.timeline.uploads[pos.index]
+  if (!upload || unplayable(props.status[pos.index])) return null
+  return previewFrame(upload, pos.offset, vodsConfig.apiBase)
+})
 const shown = computed(() => (dragging.value && hover.value ? hover.value.t : props.time))
 const snailMode = computed<SnailMode>(() => (dragging.value || floating.value ? 'float' : props.playing ? 'walk' : 'sleep'))
 /** The colour of the game at the playhead, for the snail's shell (none in a "stream down" gap). */
@@ -279,7 +290,18 @@ const shownColor = computed(() => {
         class="tip vx-mono"
         :style="{ left: `${hover.x}px`, translate: tipShift ? `${tipShift}px 0` : undefined }"
       >
-        <template v-if="hover.brk">stream change</template><template v-else-if="hover.jump">{{ toClock(hover.jump.at) }} · {{ hover.jump.skipped >= 0 ? `skips ${toClock(hover.jump.skipped)} of the stream` : `goes back ${toClock(-hover.jump.skipped)}` }}</template><template v-else>{{ toClock(hover.t) }}<template v-if="hoverChapter?.kind === 'gap'"> · stream down</template><template v-else-if="hoverCut"> · cut from YouTube</template><template v-else-if="hoverChapter"> · {{ hoverChapter.name }}</template></template>
+        <span
+          v-if="hoverPreview"
+          class="frame"
+          :style="{
+            width: `${hoverPreview.w}px`,
+            height: `${hoverPreview.h}px`,
+            backgroundImage: `url(${hoverPreview.url})`,
+            backgroundPosition: `-${hoverPreview.x}px -${hoverPreview.y}px`,
+            backgroundSize: `${hoverPreview.sheetW}px ${hoverPreview.sheetH}px`,
+          }"
+        ></span>
+        <span><template v-if="hover.brk">stream change</template><template v-else-if="hover.jump">{{ toClock(hover.jump.at) }} · {{ hover.jump.skipped >= 0 ? `skips ${toClock(hover.jump.skipped)} of the stream` : `goes back ${toClock(-hover.jump.skipped)}` }}</template><template v-else>{{ toClock(hover.t) }}<template v-if="hoverChapter?.kind === 'gap'"> · stream down</template><template v-else-if="hoverCut"> · cut from YouTube</template><template v-else-if="hoverChapter"> · {{ hoverChapter.name }}</template></template></span>
       </span>
     </div>
   </div>
@@ -322,6 +344,7 @@ const shownColor = computed(() => {
 .tip {
   position: absolute; bottom: calc(100% + 22px); transform: translateX(-50%); white-space: nowrap; pointer-events: none;
   font-size: 11px; padding: 2px 6px; border-radius: var(--vx-radius-sm); background: var(--vx-pop); border: 1px solid var(--vx-line);
-  z-index: 3;
+  z-index: 3; display: flex; flex-direction: column; align-items: center; gap: 2px;
 }
+.frame { display: block; margin: 2px -4px 0; border-radius: 2px; background-color: #000; background-repeat: no-repeat; }
 </style>
