@@ -5,6 +5,7 @@
 import { gamePalette, learnGameColors, VxButton, VxChapterBar, VxChip, VxLink, VxPlaceholder, VxPosters } from '@vexoulz/ui'
 import { boxArt, isFinished, toClock, watchPath, type Progress, type Vod } from '@vexoulz/vods-core'
 import { computed, watchEffect } from 'vue'
+import SeeAllButton from './SeeAllButton.vue'
 import { useThumbnail } from '@/composables/useThumbnail'
 import { gamesWithArt } from '@/lib/art'
 import { relativeDay } from '@/lib/dates'
@@ -78,7 +79,7 @@ const { src: thumb, srcset: thumbSet, onLoad: thumbLoaded, onError: thumbFailed 
             {{ progress ? (grown ? `▶ Watch what's new (${toClock(progress.t)})` : `▶ Resume at ${toClock(progress.t)}`) : '▶ Watch' }}
           </VxLink>
           <VxLink v-if="progress" :to="watchPath(vod, 0)" class="vx-btn">From the start</VxLink>
-          <VxButton @click="emit('all')">See all VODs →</VxButton>
+          <SeeAllButton @click="emit('all')">See all VODs</SeeAllButton>
         </div>
       </div>
     </div>

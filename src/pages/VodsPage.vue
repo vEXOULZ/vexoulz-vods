@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // Past broadcasts: one filter bar (All resets, title search, game dropdown with every game in the archive, date
 // range; all combinable and kept in the URL), a grid of cards, and "load more". On phones the bar wraps.
-// Unfiltered, the top keeps the newest VOD in its own panel (with a button to every VOD), then the latest playthroughs
-// (a row that scrolls sideways, with a button to all of them) beside the most played games as filter shortcuts; it
+// Unfiltered, the top keeps the newest VOD in its own panel (with a button to every VOD), the latest playthroughs (a
+// row that scrolls sideways, with a button to all of them) and the most played games as filter shortcuts; it
 // stays the same on every tab. The "see all" buttons open their tab and scroll down to the list.
 // Tabs above the bar split the list by tag: plain VODs (merges and splits included) and playthroughs (one game across
 // streams, as one video); the filters apply within the tab.
@@ -155,15 +155,13 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
 
     <section v-if="showTop" class="top">
       <LatestVod v-if="latest" :vod="latest" :progress="resumeOf(latest)" @all="seeAll('vods')" />
-      <div class="pair">
-        <LatestPlaythroughs
-          :vods="latestPlaythroughs"
-          :loading="playthroughsLoading"
-          :resume="resumeOf"
-          @all="seeAll('playthroughs')"
-        />
-        <MostPlayed :games="games" :error="gamesError" @game="(g) => go({ game: g }, true)" @retry="fetchGames(true)" />
-      </div>
+      <LatestPlaythroughs
+        :vods="latestPlaythroughs"
+        :loading="playthroughsLoading"
+        :resume="resumeOf"
+        @all="seeAll('playthroughs')"
+      />
+      <MostPlayed :games="games" :error="gamesError" @game="(g) => go({ game: g }, true)" @retry="fetchGames(true)" />
     </section>
 
     <div ref="bar" class="bar">
@@ -234,11 +232,6 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
 }
 .date-pop { display: flex; flex-direction: column; gap: 8px; padding: 8px; }
 .top { display: flex; flex-direction: column; gap: 10px; margin-bottom: 28px; }
-/* Latest playthroughs beside the most played games; stacked when there isn't room for both. */
-.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-@container vx-site (max-width: 900px) {
-  .pair { grid-template-columns: minmax(0, 1fr); }
-}
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 24px 18px; }
 .sk { display: flex; flex-direction: column; gap: 8px; }
 .more { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 28px; }
