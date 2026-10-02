@@ -1,6 +1,6 @@
-// The list page keeps its filters in the URL so a link reproduces the view: ?tab=&title=&game=&from=&to=&page=
-import type { VodListOptions } from '@vexoulz/vods-core'
-import { tagStyle } from './vodTags'
+// The list page keeps its filters in the URL so a link reproduces the view: ?tab=&tag=&title=&game=&from=&to=&page=
+import type { Vod, VodListOptions } from '@vexoulz/vods-core'
+import { DATE_TAGS, RECENT_MS, TAG_NAME, tagStyle } from './vodTags'
 
 /**
  * The list's tabs, one per VOD tag the site knows. Plain VODs (no tags) first; a tag the site doesn't know yet has no
@@ -16,8 +16,23 @@ export const tagLabel = (tag: string) => tagStyle(tag).label
 
 export type Tab = (typeof TABS)[number]['value']
 
+/** The tab a VOD is listed in: the first whose tag it has, else the plain VODs. */
+export const tabOf = (vod: Vod): Tab => TABS.find((t) => t.tag && vod.tags.includes(t.tag))?.value ?? 'vods'
+
+/**
+ * Whether the list can be narrowed to `tag` within `tab`: the date tags anywhere; a tag set on VODs only in a tab of
+ * tagged VODs (plain VODs have none), and not the tags the tabs themselves are made of.
+ */
+export function tagFilters(tab: Tab, tag: string): boolean {
+  if (DATE_TAGS.includes(tag)) return true
+  const kinds = TABS.map((t) => t.tag).filter(Boolean) as string[]
+  return !!TABS.find((t) => t.value === tab)?.tag && TAG_NAME.test(tag) && !kinds.includes(tag)
+}
+
 export interface ListState {
   tab: Tab
+  /** One tag the list is narrowed to (tagFilters), or ''. */
+  tag: string
   page: number
   title: string
   game: string
@@ -35,9 +50,11 @@ export function parseListQuery(q: Query): ListState {
   const page = Number.parseInt(first(q.page), 10)
   const from = first(q.from)
   const to = first(q.to)
-  const tab = first(q.tab)
+  const tabValue = TABS.find((t) => t.value === first(q.tab))?.value ?? 'vods'
+  const tag = first(q.tag)
   return {
-    tab: TABS.find((t) => t.value === tab)?.value ?? 'vods',
+    tab: tabValue,
+    tag: tagFilters(tabValue, tag) ? tag : '',
     page: Number.isFinite(page) && page > 0 ? page : 1,
     title: first(q.title).slice(0, 200),
     game: first(q.game).slice(0, 200),
@@ -50,6 +67,7 @@ export function parseListQuery(q: Query): ListState {
 export function toListQuery(s: ListState): Record<string, string> {
   const q: Record<string, string> = {}
   if (s.tab !== 'vods') q.tab = s.tab
+  if (s.tag) q.tag = s.tag
   if (s.title) q.title = s.title
   if (s.game) q.game = s.game
   if (s.from) q.from = s.from
@@ -58,10 +76,22 @@ export function toListQuery(s: ListState): Record<string, string> {
   return q
 }
 
-/** Filters for the API. Dates are local days: `from` from its start, `to` through its end. */
-export function toApiFilter(s: ListState): Omit<VodListOptions, 'page' | 'perPage'> {
+/** The archive's filter for a tag: the date tags by when the footage was live (lib/vodTags), others as set. */
+function tagFilter(tag: string, now: number): Partial<VodListOptions> {
+  const week = new Date(now - RECENT_MS)
+  if (tag === 'new') return { firstLiveFrom: week }
+  if (tag === 'updated') return { firstLiveBefore: week, lastLiveFrom: week }
+  return tag ? { tags: [tag] } : {}
+}
+
+/**
+ * Filters for the API. Dates are local days: `from` from its start, `to` through its end. `now` (to the minute, so
+ * the same view asks the same thing) dates the tags `new` and `updated`.
+ */
+export function toApiFilter(s: ListState, now = Math.floor(Date.now() / 60_000) * 60_000): Omit<VodListOptions, 'page' | 'perPage'> {
   return {
     tag: TABS.find((t) => t.value === s.tab)?.tag,
+    ...tagFilter(s.tag, now),
     title: s.title || undefined,
     game: s.game || undefined,
     from: s.from ? new Date(`${s.from}T00:00:00`) : undefined,
@@ -70,5 +100,12 @@ export function toApiFilter(s: ListState): Omit<VodListOptions, 'page' | 'perPag
 }
 
 /** Any filter on, the tab aside (a tab isn't a filter: "All" keeps it). */
-export const hasFilters = (s: ListState) => !!(s.title || s.game || s.from || s.to)
+export const hasFilters = (s: ListState) => !!(s.tag || s.title || s.game || s.from || s.to)
+
+/** The list narrowed to `tag`, in the tab `vod` is listed in; null if that tab can't be. */
+export function tagLink(vod: Vod, tag: string): string | null {
+  const tab = tabOf(vod)
+  if (!tagFilters(tab, tag)) return null
+  return `/vods?${new URLSearchParams(toListQuery({ ...parseListQuery({}), tab, tag }))}`
+}
 

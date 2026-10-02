@@ -220,6 +220,32 @@ async function publicJson(api: string, path: string): Promise<unknown> {
   return res.json()
 }
 
+/** The list's `firstLiveAt` / `lastLiveAt` filters (vEXOULZ/twitch-archive#57) until the public API has them: the
+ * rest of the query from the public API, unpaged, then filtered and paged here. A regular VOD's are its createdAt. */
+async function liveFiltered(api: string, rawUrl: string, res: ServerResponse) {
+  const url = new URL(rawUrl, 'http://x')
+  const range = { firstLiveAt: {} as Record<string, number>, lastLiveAt: {} as Record<string, number> }
+  const rest = new URLSearchParams()
+  for (const [k, v] of url.searchParams) {
+    const m = /^(firstLiveAt|lastLiveAt)\[(\$gte|\$lt)\]$/.exec(k)
+    if (m) range[m[1] as keyof typeof range][m[2]!] = Date.parse(v)
+    else if (k !== '$limit' && k !== '$skip') rest.append(k, v)
+  }
+  const limit = Number(url.searchParams.get('$limit') ?? 20)
+  const skip = Number(url.searchParams.get('$skip') ?? 0)
+  rest.set('$limit', '500')
+  try {
+    const all = ((await publicJson(api, `/vods?${rest}`)) as { data: Json[] }).data
+    const at = (v: Json, f: keyof typeof range) => Date.parse(((v.synthetic as Json | null)?.[f] as string) ?? (v.createdAt as string))
+    const inRange = (v: Json, f: keyof typeof range) =>
+      (range[f].$gte == null || at(v, f) >= range[f].$gte) && (range[f].$lt == null || at(v, f) < range[f].$lt)
+    const found = all.filter((v) => inRange(v, 'firstLiveAt') && inRange(v, 'lastLiveAt'))
+    return send(res, 200, { total: found.length, limit, skip, data: found.slice(skip, skip + limit) })
+  } catch (e) {
+    return send(res, 502, { name: 'BadGateway', message: String(e), code: 502 })
+  }
+}
+
 async function vodOf(api: string, id: string): Promise<Json | null> {
   if (!id || deleted.has(id)) return null
   const sv = synthetics.get(id)
@@ -672,6 +698,7 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
           })
           return res.end(sh.svg)
         }
+        if (tagsPath === '/vods' && /[?&](first|last)LiveAt%5B|[?&](first|last)LiveAt\[/.test(req.url ?? '')) return liveFiltered(publicApi, req.url!, res)
         const pm = /^\/vods\/([^/?]+)(?:\?.*)?$/.exec(req.url ?? '')
         const id = pm ? decodeURIComponent(pm[1]!) : ''
         if (pm && hidden.has(id)) return send(res, 404, { name: 'NotFound', message: 'No record found', code: 404 })

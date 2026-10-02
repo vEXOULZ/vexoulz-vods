@@ -8,6 +8,8 @@ import { shallowRef } from 'vue'
 import { site, vodsConfig, type TagStyle } from '@/vods.config'
 
 export const RECENT_MS = 7 * 24 * 3600 * 1000
+/** The tags that follow the dates (vodTags) rather than being set on a VOD. */
+export const DATE_TAGS: readonly string[] = ['new', 'updated']
 /** The VOD tag behind `complete`; set on the synthetic VOD's manage page. */
 export const COMPLETE_TAG = 'complete'
 

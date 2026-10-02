@@ -1,11 +1,11 @@
 <script setup lang="ts">
-// Past broadcasts: one filter bar (All resets, title search, game dropdown with every game in the archive, date
+// Past broadcasts: one filter bar (All resets, title search, game dropdown with every game in the archive, tag, date
 // range; all combinable and kept in the URL), a grid of cards, and "load more". On phones the bar wraps.
 // Unfiltered, the top keeps the newest VOD in its own panel (with a button to every VOD), the latest playthroughs (a
 // row that scrolls sideways, with a button to all of them) and the most played games as filter shortcuts; it
 // stays the same on every tab. The "see all" buttons open their tab and scroll down to the list.
 // Tabs above the bar split the list by tag: plain VODs (merges and splits included) and playthroughs (one game across
-// streams, as one video); the filters apply within the tab.
+// streams, as one video); the filters apply within the tab. A tag on a card links here narrowed to it (ThumbTags).
 import {
   VxButton,
   VxCallout,
@@ -24,9 +24,10 @@ import GamePicker from '@/components/GamePicker.vue'
 import LatestPlaythroughs from '@/components/LatestPlaythroughs.vue'
 import LatestVod from '@/components/LatestVod.vue'
 import MostPlayed from '@/components/MostPlayed.vue'
+import TagPicker from '@/components/TagPicker.vue'
 import VodCard from '@/components/VodCard.vue'
 import { loadGamesPlayed } from '@/lib/gamesPlayed'
-import { hasFilters, parseListQuery, TABS, toApiFilter, toListQuery, type ListState, type Tab } from '@/lib/listQuery'
+import { hasFilters, parseListQuery, TABS, tagFilters, toApiFilter, toListQuery, type ListState, type Tab } from '@/lib/listQuery'
 import { site, vodsConfig } from '@/vods.config'
 import VodsShell from '@/components/VodsShell.vue'
 import { watchDebounced } from '@/composables/watchDebounced'
@@ -92,9 +93,27 @@ function resetAll() {
 const tabOptions = TABS.map(({ value, label }) => ({ value, label }))
 const tab = computed({
   get: () => state.value.tab,
-  set: (t: Tab | undefined) => go({ tab: t ?? 'vods' }, true),
+  set: (t: Tab | undefined) => {
+    const next = t ?? 'vods'
+    go({ tab: next, tag: tagFilters(next, state.value.tag) ? state.value.tag : '' }, true)
+  },
 })
 const playthroughs = computed(() => state.value.tab === 'playthroughs')
+
+// ---- tag ----
+const tag = computed({
+  get: () => state.value.tag,
+  set: (t: string) => go({ tag: t }),
+})
+// A tag picked on a card further down: bring the narrowed list's top into view.
+watch(
+  () => state.value.tag,
+  async (t) => {
+    if (!t || !bar.value || bar.value.getBoundingClientRect().top >= 0) return
+    await nextTick()
+    bar.value.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  },
+)
 
 // ---- dates ----
 const dateFrom = ref(state.value.from)
@@ -173,6 +192,7 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
           <template #icon>⌕</template>
         </VxInput>
         <GamePicker v-model="game" :games="games" :error="gamesError" @retry="fetchGames(true)" />
+        <TagPicker v-model="tag" :tab="state.tab" />
         <VxPopover width="min(320px, calc(100vw - 32px))" role="dialog">
           <template #trigger="{ toggle, open }">
             <VxButton :pressed="open || !!(state.from || state.to)" @click="toggle">{{ dateLabel }} ▾</VxButton>
@@ -201,7 +221,7 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
     <VxEmptyState
       v-else-if="!vods.length"
       :title="playthroughs ? 'No playthroughs match' : 'No VODs match'"
-      :text="hasFilters(state) ? 'Try another search or date range.' : playthroughs ? 'No playthroughs have been put together yet.' : 'Nothing archived yet.'"
+      :text="hasFilters(state) ? 'Try another search, tag or date range.' : playthroughs ? 'No playthroughs have been put together yet.' : 'Nothing archived yet.'"
     >
       <template v-if="hasFilters(state)" #actions>
         <VxButton @click="resetAll">Clear filters</VxButton>

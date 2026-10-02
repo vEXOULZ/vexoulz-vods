@@ -20,7 +20,7 @@ git config core.hooksPath .githooks   # once per clone: branch-name rules, see C
 
 | path | what |
 |---|---|
-| `/`, `/vods` | list: an "All" reset, title search, a game dropdown (every game in the archive, most played first), date range, "load more"; all kept in the URL (`?title=&game=&from=&to=&page=`) |
+| `/`, `/vods` | list: an "All" reset, title search, a game dropdown (every game in the archive, most played first), a tag dropdown (new / updated, and the tab's own tags such as complete; clicking a tag on a thumbnail sets it), date range, "load more"; all kept in the URL (`?tab=&tag=&title=&game=&from=&to=&page=`) |
 | `/vods/:id` | watch the VOD uploads |
 | `/live/:id` | watch the live uploads |
 | `/youtube/:id` | watch whichever upload set exists (live first, like the old site) |

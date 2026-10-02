@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { hasFilters, parseListQuery, toApiFilter, toListQuery } from '@/lib/listQuery'
+import type { Vod } from '@vexoulz/vods-core'
+import { hasFilters, parseListQuery, tabOf, tagLink, toApiFilter, toListQuery } from '@/lib/listQuery'
+import { RECENT_MS } from '@/lib/vodTags'
 
 describe('parseListQuery', () => {
   it('defaults an empty query', () => {
-    expect(parseListQuery({})).toEqual({ tab: 'vods', page: 1, title: '', game: '', from: '', to: '' })
+    expect(parseListQuery({})).toEqual({ tab: 'vods', tag: '', page: 1, title: '', game: '', from: '', to: '' })
   })
 
   it('reads every filter and trims', () => {
     expect(parseListQuery({ title: ' chill ', game: 'Minecraft', from: '2025-01-02', to: '2025-02-03', page: '3' })).toEqual({
       tab: 'vods',
+      tag: '',
       page: 3,
       title: 'chill',
       game: 'Minecraft',
@@ -46,6 +49,38 @@ describe('toListQuery', () => {
     expect(parseListQuery({ tab: 'nope' }).tab).toBe('vods')
     expect(toListQuery(parseListQuery({ tab: 'playthroughs', page: '2' }))).toEqual({ tab: 'playthroughs', page: '2' })
     expect(toListQuery(parseListQuery({ tab: 'vods' }))).toEqual({})
+  })
+})
+
+describe('the tag filter', () => {
+  it('takes the date tags in any tab, set tags only where VODs have them', () => {
+    expect(parseListQuery({ tag: 'new' }).tag).toBe('new')
+    expect(parseListQuery({ tab: 'playthroughs', tag: 'updated' }).tag).toBe('updated')
+    expect(parseListQuery({ tab: 'playthroughs', tag: 'complete' }).tag).toBe('complete')
+    // Plain VODs have no tags; a tab's own tag isn't a filter; nor is a bad name.
+    expect(parseListQuery({ tag: 'complete' }).tag).toBe('')
+    expect(parseListQuery({ tab: 'playthroughs', tag: 'compilation' }).tag).toBe('')
+    expect(parseListQuery({ tab: 'playthroughs', tag: 'Bad Tag' }).tag).toBe('')
+    expect(toListQuery(parseListQuery({ tab: 'playthroughs', tag: 'complete' }))).toEqual({ tab: 'playthroughs', tag: 'complete' })
+    expect(hasFilters(parseListQuery({ tag: 'new' }))).toBe(true)
+  })
+
+  it('asks the archive by live dates for new and updated, by tag for the rest', () => {
+    const now = Date.UTC(2026, 9, 2, 12)
+    const week = new Date(now - RECENT_MS)
+    expect(toApiFilter(parseListQuery({ tag: 'new' }), now)).toMatchObject({ tag: undefined, firstLiveFrom: week })
+    const updated = toApiFilter(parseListQuery({ tab: 'playthroughs', tag: 'updated' }), now)
+    expect(updated).toMatchObject({ tag: 'compilation', firstLiveBefore: week, lastLiveFrom: week })
+    expect(updated.tags).toBeUndefined()
+    expect(toApiFilter(parseListQuery({ tab: 'playthroughs', tag: 'complete' }), now)).toMatchObject({ tag: 'compilation', tags: ['complete'] })
+  })
+
+  it("links a VOD's tag to its own tab", () => {
+    const vod = (tags: string[]) => ({ tags }) as unknown as Vod
+    expect(tabOf(vod(['compilation', 'complete']))).toBe('playthroughs')
+    expect(tagLink(vod(['compilation', 'complete']), 'complete')).toBe('/vods?tab=playthroughs&tag=complete')
+    expect(tagLink(vod([]), 'new')).toBe('/vods?tag=new')
+    expect(tagLink(vod(['complete']), 'complete')).toBeNull()
   })
 })
 

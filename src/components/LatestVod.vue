@@ -36,16 +36,18 @@ const { src: thumb, srcset: thumbSet, onLoad: thumbLoaded, onError: thumbFailed 
 <template>
   <article class="latest vx-panel">
     <div class="main">
-      <VxLink :to="to" class="thumb" :aria-label="title" tabindex="-1">
-        <div class="vx-ring img">
-          <img v-if="thumb" :src="thumb" :srcset="thumbSet" alt="" decoding="async" @load="thumbLoaded" @error="thumbFailed" />
-          <VxPlaceholder v-else label="no thumbnail" ratio="16 / 9" />
-        </div>
-        <span class="dur vx-mono">{{ toClock(vod.duration) }}</span>
-        <span v-if="progress" class="watched" :style="{ width: `${watched * 100}%` }"></span>
-        <VxChapterBar v-if="vod.chapters.length" class="bar" :chapters="vod.chapters" :palette="palette" />
+      <div class="thumb">
+        <VxLink :to="to" class="thumb-link" :aria-label="title" tabindex="-1">
+          <div class="vx-ring img">
+            <img v-if="thumb" :src="thumb" :srcset="thumbSet" alt="" decoding="async" @load="thumbLoaded" @error="thumbFailed" />
+            <VxPlaceholder v-else label="no thumbnail" ratio="16 / 9" />
+          </div>
+          <span class="dur vx-mono">{{ toClock(vod.duration) }}</span>
+          <span v-if="progress" class="watched" :style="{ width: `${watched * 100}%` }"></span>
+          <VxChapterBar v-if="vod.chapters.length" class="bar" :chapters="vod.chapters" :palette="palette" />
+        </VxLink>
         <ThumbTags :vod="vod" class="tags" />
-      </VxLink>
+      </div>
       <div class="vx-eyebrow">Latest broadcast · {{ relativeDay(vod.createdAt) }}</div>
       <h2 class="title"><VxLink :to="to">{{ title }}</VxLink></h2>
     </div>
@@ -105,7 +107,8 @@ const { src: thumb, srcset: thumbSet, onLoad: thumbLoaded, onError: thumbFailed 
   .side { contain: none; }
   .chapters { flex: none; max-height: 16rem; }
 }
-.thumb { display: block; position: relative; color: inherit; margin-bottom: 4px; }
+.thumb { position: relative; margin-bottom: 4px; }
+.thumb-link { display: block; position: relative; color: inherit; }
 .img { border-radius: var(--vx-radius); overflow: hidden; aspect-ratio: 16 / 9; background: var(--vx-surface); }
 .img img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .dur {
