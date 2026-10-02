@@ -46,6 +46,11 @@ export interface RawTag {
   shape: string | null
   width: number | null
   height: number | null
+  text: string | null
+  textColor: string | null
+  textSize: number | null
+  textX: number | null
+  textY: number | null
 }
 
 export const TAG_NAME = /^[a-z0-9][a-z0-9-]{0,31}$/
@@ -53,23 +58,33 @@ export const TAG_NAME = /^[a-z0-9][a-z0-9-]{0,31}$/
 export const TAG_COLOR = /^(#[0-9a-f]{3,8}|var\(--vx-[a-z0-9-]+\)|[a-z]{3,20}|(rgba?|hsla?|oklch)\([0-9.,%\s/a-z-]{1,60}\))$/i
 export const TAG_SIZE = { min: 8, max: 200 }
 export const TAG_LABEL_MAX = 40
+export const TAG_TEXT_MAX = 24
+export const TAG_TEXT_SIZE = { min: 6, max: 48 }
+export const TAG_TEXT_NUDGE = { min: -100, max: 100 }
 /** Tags the site or the archive sets by itself: always listed on /manage/tags, and can't be removed there. */
 export const AUTO_TAGS: readonly string[] = ['new', 'updated', 'compilation']
 export const isAutoTag = (name: string) => AUTO_TAGS.includes(name)
 
 /** The archive's list as tag styles: shapes resolved against the API, anything malformed dropped or defaulted. */
 export function fromRaw(raw: RawTag[], apiBase: string): Record<string, TagStyle> {
-  const size = (n: unknown) => (typeof n === 'number' && n >= TAG_SIZE.min && n <= TAG_SIZE.max ? n : undefined)
+  const within = (n: unknown, r: { min: number; max: number }) => (Number.isInteger(n) && (n as number) >= r.min && (n as number) <= r.max ? (n as number) : undefined)
+  const size = (n: unknown) => within(n, TAG_SIZE)
+  const color = (c: unknown) => (typeof c === 'string' && TAG_COLOR.test(c) ? c : undefined)
   const out: Record<string, TagStyle> = {}
   for (const t of raw) {
     if (!t || typeof t.name !== 'string' || !TAG_NAME.test(t.name)) continue
     out[t.name] = {
       label: typeof t.label === 'string' && t.label ? t.label : t.name,
       drawn: t.drawn === true,
-      color: typeof t.color === 'string' && TAG_COLOR.test(t.color) ? t.color : undefined,
+      color: color(t.color),
       shape: typeof t.shape === 'string' && /^v1\/site\/tags\/[\w.?=&-]+$/.test(t.shape) ? `${apiBase.replace(/\/+$/, '')}/${t.shape}` : null,
       width: size(t.width),
       height: size(t.height),
+      text: typeof t.text === 'string' && t.text.trim() ? t.text.trim().slice(0, TAG_TEXT_MAX) : undefined,
+      textColor: color(t.textColor),
+      textSize: within(t.textSize, TAG_TEXT_SIZE),
+      textX: within(t.textX, TAG_TEXT_NUDGE),
+      textY: within(t.textY, TAG_TEXT_NUDGE),
     }
   }
   return out

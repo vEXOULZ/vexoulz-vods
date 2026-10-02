@@ -7,10 +7,10 @@ import { computed, onMounted, ref } from 'vue'
 import { AdminApiError, type SiteTags } from '@/admin/api'
 import ManageShell from '@/admin/ManageShell.vue'
 import { admin } from '@/admin/session'
-import { blankDraft, draftsOf, previewOf, rawOf, tagChanges, type TagDraft } from '@/admin/tags'
+import { blankDraft, draftsOf, previewOf, rawOf, tagChanges, type TagDraft, type TagField } from '@/admin/tags'
 import TagMark from '@/components/TagMark.vue'
 import { errorMessage } from '@/lib/errors'
-import { loadTagConfig, TAG_SIZE } from '@/lib/vodTags'
+import { loadTagConfig, TAG_SIZE, TAG_TEXT_MAX, TAG_TEXT_NUDGE, TAG_TEXT_SIZE } from '@/lib/vodTags'
 import { site, vodsConfig } from '@/vods.config'
 
 const toast = useToast()
@@ -21,6 +21,7 @@ const ABOUT: Record<string, string> = {
   compilation: 'On every playthrough.',
 }
 const SWATCHES = ['accent', 'info', 'ok', 'warn', 'bad', 'ink', 'muted'].map((t) => `var(--vx-${t})`)
+const TEXT_SWATCHES = ['bg', 'ink', ...['accent', 'info', 'ok', 'warn', 'bad']].map((t) => `var(--vx-${t})`)
 const MAX_SVG = 64 * 1024
 
 const data = ref<SiteTags | null>(null)
@@ -51,7 +52,7 @@ async function load() {
 }
 
 const pending = computed(() => tagChanges(data.value?.tags ?? [], drafts.value))
-const err = (d: TagDraft, field: 'name' | 'label' | 'color' | 'width' | 'height') => pending.value.errors.get(d.key)?.[field]
+const err = (d: TagDraft, field: TagField) => pending.value.errors.get(d.key)?.[field]
 
 async function save() {
   if (unavailable.value || !pending.value.changed || pending.value.errors.size) return
@@ -201,7 +202,7 @@ onMounted(() => {
             </VxField>
             <div class="shape">
               <span class="vx-eyebrow">Shape</span>
-              <span class="vx-muted">{{ d.shape ? 'SVG, painted in the color' : 'Placeholder' }}</span>
+              <span class="vx-muted">{{ d.shape ? 'SVG: its currentColor parts (or black, if none) take the color' : 'Placeholder' }}</span>
               <template v-if="d.saved && !unavailable">
                 <label class="vx-btn is-sm upload" :class="{ 'is-busy': shaping === d.name }">
                   {{ d.shape ? 'Replace SVG' : 'Upload SVG' }}
@@ -211,6 +212,44 @@ onMounted(() => {
               </template>
               <span v-else-if="!unavailable" class="vx-muted note">Save the tag first.</span>
             </div>
+            <div class="drawn wide">
+              <VxSwitch v-model="d.textOn" :label="'Text on the tag'" />
+            </div>
+            <template v-if="d.textOn">
+              <VxField label="Text" :error="err(d, 'text')" :help="`Up to ${TAG_TEXT_MAX}; the label stays as it is.`">
+                <template #default="{ id }"><VxInput :id="id" v-model="d.text" :invalid="!!err(d, 'text')" :placeholder="d.label" /></template>
+              </VxField>
+              <VxField label="Text color" :error="err(d, 'textColor')" help="Empty: the page background.">
+                <template #default="{ id }">
+                  <div class="color">
+                    <input type="color" class="picker" :value="pickerValue(d.textColor)" :aria-label="`Pick a text color for ${d.name || 'the tag'}`" @input="d.textColor = ($event.target as HTMLInputElement).value" />
+                    <VxInput :id="id" v-model="d.textColor" mono :invalid="!!err(d, 'textColor')" placeholder="var(--vx-bg)" />
+                  </div>
+                  <div class="swatches">
+                    <button
+                      v-for="s in TEXT_SWATCHES"
+                      :key="s"
+                      type="button"
+                      class="swatch"
+                      :style="{ background: s }"
+                      :aria-pressed="d.textColor === s"
+                      :title="s"
+                      :aria-label="s"
+                      @click="d.textColor = s"
+                    ></button>
+                  </div>
+                </template>
+              </VxField>
+              <VxField label="Text size" :error="err(d, 'textSize')" :help="`px, ${TAG_TEXT_SIZE.min}–${TAG_TEXT_SIZE.max}; empty: half the height`">
+                <template #default="{ id }"><VxInput :id="id" v-model="d.textSize" type="number" mono :invalid="!!err(d, 'textSize')" /></template>
+              </VxField>
+              <VxField label="Nudge across" :error="err(d, 'textX')" :help="`px from the middle, ${TAG_TEXT_NUDGE.min} to ${TAG_TEXT_NUDGE.max}; + is right`">
+                <template #default="{ id }"><VxInput :id="id" v-model="d.textX" type="number" mono :invalid="!!err(d, 'textX')" placeholder="0" /></template>
+              </VxField>
+              <VxField label="Nudge down" :error="err(d, 'textY')" help="px from the middle; + is down">
+                <template #default="{ id }"><VxInput :id="id" v-model="d.textY" type="number" mono :invalid="!!err(d, 'textY')" placeholder="0" /></template>
+              </VxField>
+            </template>
           </template>
         </div>
 
@@ -257,6 +296,7 @@ onMounted(() => {
 .swatch { width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--vx-line); cursor: pointer; padding: 0; }
 .swatch[aria-pressed='true'] { outline: 2px solid var(--vx-ink); outline-offset: 1px; }
 .drawn { display: flex; align-items: center; }
+.wide { grid-column: 1 / -1; }
 .shape { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; }
 .upload { position: relative; cursor: pointer; }
 .upload.is-busy { opacity: 0.6; pointer-events: none; }

@@ -1,8 +1,13 @@
-// The Tags page's drafts: each tag as its fields are typed (sizes as text), the checks the archive also makes, and
+// The Tags page's drafts: each tag as its fields are typed (numbers as text), the checks the archive also makes, and
 // the list PUT /admin/site/tags takes.
 import type { TagInput } from './api'
-import { AUTO_TAGS, isAutoTag, TAG_COLOR, TAG_LABEL_MAX, TAG_NAME, TAG_SIZE, type RawTag } from '@/lib/vodTags'
+import {
+  AUTO_TAGS, isAutoTag, TAG_COLOR, TAG_LABEL_MAX, TAG_NAME, TAG_SIZE, TAG_TEXT_MAX, TAG_TEXT_NUDGE, TAG_TEXT_SIZE, type RawTag,
+} from '@/lib/vodTags'
 import { site, type TagStyle } from '@/vods.config'
+
+/** As typed: a number input's v-model hands back a number once something is typed, '' when empty. */
+type Typed = string | number
 
 export interface TagDraft {
   /** Stable across edits, for v-for and errors (a name can change while it's new). */
@@ -11,9 +16,15 @@ export interface TagDraft {
   label: string
   drawn: boolean
   color: string
-  /** As typed: the number inputs' v-model hands back a number once something is typed, '' when empty. */
-  width: string | number
-  height: string | number
+  width: Typed
+  height: Typed
+  /** Text written on the drawn tag; off keeps what was typed but saves none. */
+  textOn: boolean
+  text: string
+  textColor: string
+  textSize: Typed
+  textX: Typed
+  textY: Typed
   /** The shape as saved (a path under the public API); uploads and removals apply straight away. */
   shape: string | null
   /** Saved in the archive: its name is fixed and it can take a shape. */
@@ -22,7 +33,11 @@ export interface TagDraft {
   auto: boolean
 }
 
-export type TagField = 'name' | 'label' | 'color' | 'width' | 'height'
+export type TagField = 'name' | 'label' | 'color' | 'width' | 'height' | 'text' | 'textColor' | 'textSize' | 'textX' | 'textY'
+
+const NO_TEXT = { text: null, textColor: null, textSize: null, textX: null, textY: null }
+const bare = (name: string, label: string, drawn: boolean): RawTag => ({ name, label, drawn, color: null, shape: null, width: null, height: null, ...NO_TEXT })
+const typed = (n: number | null) => (n == null ? '' : String(n))
 
 let nextKey = 0
 export const draftOf = (t: RawTag, saved = true): TagDraft => ({
@@ -31,54 +46,85 @@ export const draftOf = (t: RawTag, saved = true): TagDraft => ({
   label: t.label,
   drawn: t.drawn,
   color: t.color ?? '',
-  width: t.width == null ? '' : String(t.width),
-  height: t.height == null ? '' : String(t.height),
+  width: typed(t.width),
+  height: typed(t.height),
+  textOn: !!t.text,
+  text: t.text ?? '',
+  textColor: t.textColor ?? '',
+  textSize: typed(t.textSize),
+  textX: typed(t.textX),
+  textY: typed(t.textY),
   shape: t.shape,
   saved,
   auto: isAutoTag(t.name),
 })
-export const blankDraft = (): TagDraft => draftOf({ name: '', label: '', drawn: true, color: null, shape: null, width: null, height: null }, false)
+export const blankDraft = (): TagDraft => draftOf(bare('', '', true), false)
 
 /** `site.tags` as the archive's list: what the page starts from while the archive has none. */
 export const rawOf = (tags: Record<string, TagStyle>): RawTag[] =>
   Object.entries(tags).map(([name, s]) => ({
     name, label: s.label, drawn: s.drawn, color: s.color ?? null, shape: null, width: s.width ?? null, height: s.height ?? null,
+    text: s.text ?? null, textColor: s.textColor ?? null, textSize: s.textSize ?? null, textX: s.textX ?? null, textY: s.textY ?? null,
   }))
 
 /** The archive's list as drafts, with any auto tag it lacks added from `site.tags` (unsaved, so Save adds it). */
 export function draftsOf(list: RawTag[]): TagDraft[] {
   const builtIn = rawOf(site.tags)
   const missing = AUTO_TAGS.filter((name) => !list.some((t) => t.name === name)).map(
-    (name) => builtIn.find((t) => t.name === name) ?? { name, label: name, drawn: false, color: null, shape: null, width: null, height: null },
+    (name) => builtIn.find((t) => t.name === name) ?? bare(name, name, false),
   )
   return [...list.map((t) => draftOf(t)), ...missing.map((t) => draftOf(t, false))]
 }
 
-const inputOf = (t: RawTag): TagInput => ({ name: t.name, label: t.label, drawn: t.drawn, color: t.color, width: t.width, height: t.height })
+const inputOf = (t: RawTag): TagInput => ({
+  name: t.name, label: t.label, drawn: t.drawn, color: t.color, width: t.width, height: t.height,
+  text: t.text ?? null, textColor: t.textColor ?? null, textSize: t.textSize ?? null, textX: t.textX ?? null, textY: t.textY ?? null,
+})
+
+/** A whole number in `range`, or null when empty; `bad` hears about anything else. */
+function whole(value: Typed, range: { min: number; max: number }, bad: () => void): number | null {
+  const text = String(value).trim()
+  if (!text) return null
+  const n = Number(text)
+  if (!Number.isInteger(n) || n < range.min || n > range.max) bad()
+  return n
+}
 
 /** The list to save, the problems by draft key and field, and whether anything differs from `saved`. */
 export function tagChanges(saved: RawTag[], drafts: TagDraft[]) {
   const errors = new Map<number, Partial<Record<TagField, string>>>()
   const flag = (key: number, field: TagField, msg: string) => errors.set(key, { ...errors.get(key), [field]: msg })
   const seen = new Set<string>()
-  const size = (key: number, field: 'width' | 'height', typed: string | number): number | null => {
-    const text = String(typed).trim()
-    if (!text) return null
-    const n = Number(text)
-    if (!Number.isInteger(n) || n < TAG_SIZE.min || n > TAG_SIZE.max) flag(key, field, `${TAG_SIZE.min}–${TAG_SIZE.max} px`)
-    return n
+  const colorOf = (key: number, field: 'color' | 'textColor', value: string) => {
+    const c = value.trim()
+    if (c && !TAG_COLOR.test(c)) flag(key, field, 'A hex, var(--vx-…), a color name, or rgb()/hsl()/oklch()')
+    return c || null
   }
   const body: TagInput[] = drafts.map((d) => {
     const name = d.name.trim()
     const label = d.label.trim()
-    const color = d.color.trim()
     if (!TAG_NAME.test(name)) flag(d.key, 'name', 'Lowercase letters, digits and dashes, up to 32')
     else if (seen.has(name)) flag(d.key, 'name', 'Another tag has this name')
     seen.add(name)
     if (!label) flag(d.key, 'label', 'Needs a label')
     else if (label.length > TAG_LABEL_MAX) flag(d.key, 'label', `Up to ${TAG_LABEL_MAX} characters`)
-    if (color && !TAG_COLOR.test(color)) flag(d.key, 'color', 'A hex, var(--vx-…), a color name, or rgb()/hsl()/oklch()')
-    return { name, label, drawn: d.drawn, color: color || null, width: size(d.key, 'width', d.width), height: size(d.key, 'height', d.height) }
+    const px = (f: 'width' | 'height') => whole(d[f], TAG_SIZE, () => flag(d.key, f, `${TAG_SIZE.min}–${TAG_SIZE.max} px`))
+    const tag: TagInput = {
+      name, label, drawn: d.drawn, color: colorOf(d.key, 'color', d.color), width: px('width'), height: px('height'), ...NO_TEXT,
+    }
+    if (!d.textOn) return tag
+    const text = d.text.trim()
+    if (!text) flag(d.key, 'text', 'Needs text, or turn it off')
+    else if (text.length > TAG_TEXT_MAX) flag(d.key, 'text', `Up to ${TAG_TEXT_MAX} characters`)
+    const nudge = (f: 'textX' | 'textY') => whole(d[f], TAG_TEXT_NUDGE, () => flag(d.key, f, `${TAG_TEXT_NUDGE.min} to ${TAG_TEXT_NUDGE.max} px`))
+    return {
+      ...tag,
+      text,
+      textColor: colorOf(d.key, 'textColor', d.textColor),
+      textSize: whole(d.textSize, TAG_TEXT_SIZE, () => flag(d.key, 'textSize', `${TAG_TEXT_SIZE.min}–${TAG_TEXT_SIZE.max} px`)),
+      textX: nudge('textX'),
+      textY: nudge('textY'),
+    }
   })
   const changed = JSON.stringify(body) !== JSON.stringify(saved.map(inputOf))
   return { body, errors, changed }
@@ -86,17 +132,25 @@ export function tagChanges(saved: RawTag[], drafts: TagDraft[]) {
 
 /** How a draft shows in the preview, with its saved shape resolved against the public API. */
 export function previewOf(d: TagDraft, apiBase: string): TagStyle {
-  const n = (typed: string | number) => {
-    const t = String(typed).trim()
-    const v = Number(t)
-    return t && Number.isInteger(v) && v >= TAG_SIZE.min && v <= TAG_SIZE.max ? v : undefined
+  const n = (value: Typed, range: { min: number; max: number }) => {
+    const v = whole(value, range, () => {})
+    return v != null && Number.isInteger(v) && v >= range.min && v <= range.max ? v : undefined
   }
+  const color = (c: string) => (TAG_COLOR.test(c.trim()) ? c.trim() : undefined)
+  const text = d.textOn ? d.text.trim().slice(0, TAG_TEXT_MAX) : ''
   return {
     label: d.label.trim() || d.name || 'tag',
     drawn: d.drawn,
-    color: TAG_COLOR.test(d.color.trim()) ? d.color.trim() : undefined,
+    color: color(d.color),
     shape: d.shape ? `${apiBase.replace(/\/+$/, '')}/${d.shape}` : null,
-    width: n(d.width),
-    height: n(d.height),
+    width: n(d.width, TAG_SIZE),
+    height: n(d.height, TAG_SIZE),
+    ...(text && {
+      text,
+      textColor: color(d.textColor),
+      textSize: n(d.textSize, TAG_TEXT_SIZE),
+      textX: n(d.textX, TAG_TEXT_NUDGE),
+      textY: n(d.textY, TAG_TEXT_NUDGE),
+    }),
   }
 }

@@ -523,12 +523,16 @@ function checkSetting(key: string, v: unknown): string | null {
 }
 
 // ---- site tags (docs/admin-api.md, "Site tags"); MOCK_SITE_TAGS=no answers 404, like an archive without them ----
-interface SiteTag { name: string; label: string; drawn: boolean; color: string | null; width: number | null; height: number | null }
+interface SiteTag {
+  name: string; label: string; drawn: boolean; color: string | null; width: number | null; height: number | null
+  text: string | null; textColor: string | null; textSize: number | null; textX: number | null; textY: number | null
+}
+const NO_TEXT = { text: null, textColor: null, textSize: null, textX: null, textY: null }
 let siteTags: SiteTag[] = [
-  { name: 'new', label: 'new', drawn: true, color: 'var(--vx-accent)', width: null, height: null },
-  { name: 'updated', label: 'updated', drawn: true, color: 'var(--vx-info)', width: null, height: null },
-  { name: 'complete', label: 'complete', drawn: true, color: 'var(--vx-ok)', width: null, height: null },
-  { name: 'compilation', label: 'playthrough', drawn: false, color: null, width: null, height: null },
+  { name: 'new', label: 'new', drawn: true, color: 'var(--vx-accent)', width: null, height: null, ...NO_TEXT },
+  { name: 'updated', label: 'updated', drawn: true, color: 'var(--vx-info)', width: null, height: null, ...NO_TEXT },
+  { name: 'complete', label: 'complete', drawn: true, color: 'var(--vx-ok)', width: null, height: null, ...NO_TEXT },
+  { name: 'compilation', label: 'playthrough', drawn: false, color: null, width: null, height: null, ...NO_TEXT },
 ]
 /** Cleaned SVGs by tag name, with the hash that versions their URL. */
 const tagShapes = new Map<string, { svg: string; v: string }>()
@@ -557,7 +561,15 @@ function checkTags(list: unknown): SiteTag[] | string {
     for (const k of ['width', 'height'] as const) {
       if (t[k] != null && !(Number.isInteger(t[k]) && t[k] >= 8 && t[k] <= 200)) return `${t.name}: ${k} must be 8–200`
     }
-    out.push({ name: t.name, label: t.label.trim(), drawn: t.drawn, color: t.color ?? null, width: t.width ?? null, height: t.height ?? null })
+    const text = t.text == null ? null : typeof t.text === 'string' ? t.text.trim() : undefined
+    if (text === undefined || text === '' || (text && text.length > 24)) return `${t.name}: text must be 1–24 characters, or null`
+    if (t.textColor != null && (typeof t.textColor !== 'string' || !TAG_COLOR.test(t.textColor))) return `${t.name}: textColor is not a color the site takes`
+    if (t.textSize != null && !(Number.isInteger(t.textSize) && t.textSize >= 6 && t.textSize <= 48)) return `${t.name}: textSize must be 6–48`
+    for (const k of ['textX', 'textY'] as const) {
+      if (t[k] != null && !(Number.isInteger(t[k]) && t[k] >= -100 && t[k] <= 100)) return `${t.name}: ${k} must be -100 to 100`
+    }
+    const style = text ? { textColor: t.textColor ?? null, textSize: t.textSize ?? null, textX: t.textX ?? null, textY: t.textY ?? null } : NO_TEXT
+    out.push({ name: t.name, label: t.label.trim(), drawn: t.drawn, color: t.color ?? null, width: t.width ?? null, height: t.height ?? null, ...style, text })
   }
   const gone = ['new', 'updated', 'compilation'].find((name) => !seen.has(name))
   if (gone) return `${gone} is set automatically and can't be removed`
