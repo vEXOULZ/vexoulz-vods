@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // Past broadcasts: one filter bar (All resets, title search, game dropdown with every game in the archive, date
 // range; all combinable and kept in the URL), a grid of cards, and "load more". On phones the bar wraps.
-// Unfiltered, the top keeps the newest VOD in its own panel, the latest playthroughs (a row that scrolls sideways, with
-// a button to their tab) and the most played games as filter shortcuts; it stays the same on every tab.
+// Unfiltered, the top keeps the newest VOD in its own panel (with a button to every VOD), then the latest playthroughs
+// (a row that scrolls sideways, with a button to all of them) beside the most played games as filter shortcuts; it
+// stays the same on every tab. The "see all" buttons open their tab and scroll down to the list.
 // Tabs above the bar split the list by tag: plain VODs (merges and splits included) and playthroughs (one game across
 // streams, as one video); the filters apply within the tab.
 import {
@@ -17,7 +18,7 @@ import {
 } from '@vexoulz/ui'
 import { resumeProgress, type GamePlayed, type Progress, type Vod } from '@vexoulz/vods-core'
 import { useVods, useVodsContext } from '@vexoulz/vods-core/vue'
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import GamePicker from '@/components/GamePicker.vue'
 import LatestPlaythroughs from '@/components/LatestPlaythroughs.vue'
@@ -128,10 +129,21 @@ const tabFilter = (t: Tab) => toApiFilter({ ...parseListQuery({}), tab: t })
 const { vods: latestVods } = useVods(() => ({ ...tabFilter('vods'), page: 1, perPage: 1 }))
 const latest = computed(() => latestVods.value[0] ?? null)
 const { vods: latestPlaythroughs, loading: playthroughsLoading } = useVods(() => ({ ...tabFilter('playthroughs'), page: 1, perPage: 3 }))
-// "See all playthroughs": their tab, unfiltered, scrolled to the list.
+// "See all VODs" / "See all playthroughs": that tab, unfiltered, scrolled to the list.
 const bar = ref<HTMLElement | null>(null)
-async function allPlaythroughs() {
-  await go({ ...parseListQuery({}), tab: 'playthroughs' }, true)
+async function seeAll(t: Tab) {
+  if (t !== state.value.tab || hasFilters(state.value)) await go({ ...parseListQuery({}), tab: t }, true)
+  // Once the list is in: while it loads the page may be too short to scroll that far.
+  if (loading.value) {
+    await new Promise<void>((done) => {
+      const stop = watch(loading, (l) => {
+        if (l) return
+        stop()
+        done()
+      })
+    })
+  }
+  await nextTick()
   bar.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
@@ -142,15 +154,16 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
   <VodsShell>
 
     <section v-if="showTop" class="top">
-      <LatestVod v-if="latest" :vod="latest" :progress="resumeOf(latest)" />
-      <LatestPlaythroughs
-        :vods="latestPlaythroughs"
-        :loading="playthroughsLoading"
-        :resume="resumeOf"
-        :more="!playthroughs"
-        @more="allPlaythroughs"
-      />
-      <MostPlayed :games="games" :error="gamesError" @game="(g) => go({ game: g }, true)" @retry="fetchGames(true)" />
+      <LatestVod v-if="latest" :vod="latest" :progress="resumeOf(latest)" @all="seeAll('vods')" />
+      <div class="pair">
+        <LatestPlaythroughs
+          :vods="latestPlaythroughs"
+          :loading="playthroughsLoading"
+          :resume="resumeOf"
+          @all="seeAll('playthroughs')"
+        />
+        <MostPlayed :games="games" :error="gamesError" @game="(g) => go({ game: g }, true)" @retry="fetchGames(true)" />
+      </div>
     </section>
 
     <div ref="bar" class="bar">
@@ -221,6 +234,11 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
 }
 .date-pop { display: flex; flex-direction: column; gap: 8px; padding: 8px; }
 .top { display: flex; flex-direction: column; gap: 10px; margin-bottom: 28px; }
+/* Latest playthroughs beside the most played games; stacked when there isn't room for both. */
+.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+@container vx-site (max-width: 900px) {
+  .pair { grid-template-columns: minmax(0, 1fr); }
+}
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 24px 18px; }
 .sk { display: flex; flex-direction: column; gap: 8px; }
 .more { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 28px; }
