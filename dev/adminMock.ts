@@ -523,12 +523,17 @@ function checkSetting(key: string, v: unknown): string | null {
 }
 
 // ---- site tags (docs/admin-api.md, "Site tags"); MOCK_SITE_TAGS=no answers 404, like an archive without them ----
-interface SiteTag { name: string; label: string; drawn: boolean; color: string | null; width: number | null; height: number | null }
+interface SiteTag {
+  name: string; label: string; drawn: boolean; color: string | null; width: number | null; height: number | null
+  text: string | null; textColor: string | null; textSize: number | null; textX: number | null; textY: number | null; textRotate: number | null
+  pattern: 'stripes' | 'checks' | null; patternColor: string | null; patternSize: number | null
+}
+const NO_TEXT = { text: null, textColor: null, textSize: null, textX: null, textY: null, textRotate: null, pattern: null, patternColor: null, patternSize: null }
 let siteTags: SiteTag[] = [
-  { name: 'new', label: 'new', drawn: true, color: 'var(--vx-accent)', width: null, height: null },
-  { name: 'updated', label: 'updated', drawn: true, color: 'var(--vx-info)', width: null, height: null },
-  { name: 'complete', label: 'complete', drawn: true, color: 'var(--vx-ok)', width: null, height: null },
-  { name: 'compilation', label: 'playthrough', drawn: false, color: null, width: null, height: null },
+  { name: 'new', label: 'new', drawn: true, color: 'var(--vx-accent)', width: null, height: null, ...NO_TEXT },
+  { name: 'updated', label: 'updated', drawn: true, color: 'var(--vx-info)', width: null, height: null, ...NO_TEXT },
+  { name: 'complete', label: 'complete', drawn: true, color: 'var(--vx-ok)', width: null, height: null, ...NO_TEXT },
+  { name: 'compilation', label: 'playthrough', drawn: false, color: null, width: null, height: null, ...NO_TEXT },
 ]
 /** Cleaned SVGs by tag name, with the hash that versions their URL. */
 const tagShapes = new Map<string, { svg: string; v: string }>()
@@ -542,7 +547,31 @@ const siteTagsJson = (admin: boolean) => ({
   ...(admin ? { updatedAt: tagsChanged?.at ?? null, updatedBy: tagsChanged?.by ?? null } : {}),
 })
 const TAG_NAME = /^[a-z0-9][a-z0-9-]{0,31}$/
-const TAG_COLOR = /^(#[0-9a-f]{3,8}|var\(--vx-[a-z0-9-]+\)|[a-z]{3,20}|(rgba?|hsla?|oklch)\([0-9.,%\s/a-z-]{1,60}\))$/i
+const COLOR_FUNCS = ['rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'lab', 'lch', 'oklab', 'oklch', 'color', 'color-mix']
+const MATH_FUNCS = ['calc', 'min', 'max', 'clamp']
+const TAG_COLOR_MAX = 160
+/** The site's isTagColor (src/lib/vodTags.ts), as the archive checks it. */
+function isTagColor(c: string): boolean {
+  if (c.length > TAG_COLOR_MAX || !/^[#0-9a-z.,%\s/()*+-]+$/i.test(c)) return false
+  if (/^#[0-9a-f]{3,8}$/i.test(c) || /^[a-z]{3,20}$/i.test(c)) return true
+  // Theme tokens are the only var() and the only `--`.
+  const rest = c.replace(/var\(--vx-[a-z0-9-]+\)/gi, 'v')
+  if (/--|var\(/i.test(rest)) return false
+  if (rest === 'v') return true
+  // One color function around the whole thing; any function inside is a color or math one.
+  const outer = /^([a-z-]+)\(/i.exec(rest)
+  if (!outer || !COLOR_FUNCS.includes(outer[1]!.toLowerCase()) || !rest.endsWith(')')) return false
+  let depth = 0
+  for (const m of rest.matchAll(/([a-z-]*)\(|\)/gi)) {
+    if (m[0] === ')') {
+      if (--depth < 0) return false
+      if (depth === 0 && m.index !== rest.length - 1) return false
+    } else {
+      if (!m[1] || ![...COLOR_FUNCS, ...MATH_FUNCS].includes(m[1].toLowerCase()) || ++depth > 4) return false
+    }
+  }
+  return depth === 0
+}
 function checkTags(list: unknown): SiteTag[] | string {
   if (!Array.isArray(list) || list.length > 32) return 'tags must be a list of at most 32'
   const seen = new Set<string>()
@@ -553,11 +582,24 @@ function checkTags(list: unknown): SiteTag[] | string {
     seen.add(t.name)
     if (typeof t.label !== 'string' || !t.label.trim() || t.label.length > 40) return `${t.name}: label must be 1–40 characters`
     if (typeof t.drawn !== 'boolean') return `${t.name}: drawn must be true or false`
-    if (t.color != null && (typeof t.color !== 'string' || !TAG_COLOR.test(t.color))) return `${t.name}: not a color the site takes`
+    if (t.color != null && (typeof t.color !== 'string' || !isTagColor(t.color))) return `${t.name}: not a color the site takes`
     for (const k of ['width', 'height'] as const) {
       if (t[k] != null && !(Number.isInteger(t[k]) && t[k] >= 8 && t[k] <= 200)) return `${t.name}: ${k} must be 8–200`
     }
-    out.push({ name: t.name, label: t.label.trim(), drawn: t.drawn, color: t.color ?? null, width: t.width ?? null, height: t.height ?? null })
+    const text = t.text == null ? null : typeof t.text === 'string' ? t.text.trim() : undefined
+    if (text === undefined || text === '' || (text && text.length > 24)) return `${t.name}: text must be 1–24 characters, or null`
+    if (t.textColor != null && (typeof t.textColor !== 'string' || !isTagColor(t.textColor))) return `${t.name}: textColor is not a color the site takes`
+    if (t.textSize != null && !(Number.isInteger(t.textSize) && t.textSize >= 6 && t.textSize <= 48)) return `${t.name}: textSize must be 6–48`
+    for (const k of ['textX', 'textY'] as const) {
+      if (t[k] != null && !(Number.isInteger(t[k]) && t[k] >= -100 && t[k] <= 100)) return `${t.name}: ${k} must be -100 to 100`
+    }
+    if (t.pattern != null && t.pattern !== 'stripes' && t.pattern !== 'checks') return `${t.name}: pattern must be stripes, checks or null`
+    if (t.patternColor != null && (typeof t.patternColor !== 'string' || !isTagColor(t.patternColor))) return `${t.name}: patternColor is not a color the site takes`
+    if (t.patternSize != null && !(Number.isInteger(t.patternSize) && t.patternSize >= 2 && t.patternSize <= 40)) return `${t.name}: patternSize must be 2–40`
+    if (t.textRotate != null && !(Number.isInteger(t.textRotate) && t.textRotate >= -180 && t.textRotate <= 180)) return `${t.name}: textRotate must be -180 to 180`
+    const pattern = t.pattern ? { pattern: t.pattern, patternColor: t.patternColor ?? null, patternSize: t.patternSize ?? null } : { pattern: null, patternColor: null, patternSize: null }
+    const style = text ? { textColor: t.textColor ?? null, textSize: t.textSize ?? null, textX: t.textX ?? null, textY: t.textY ?? null, textRotate: t.textRotate ?? null } : NO_TEXT
+    out.push({ name: t.name, label: t.label.trim(), drawn: t.drawn, color: t.color ?? null, width: t.width ?? null, height: t.height ?? null, ...style, text, ...pattern })
   }
   const gone = ['new', 'updated', 'compilation'].find((name) => !seen.has(name))
   if (gone) return `${gone} is set automatically and can't be removed`

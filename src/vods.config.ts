@@ -20,12 +20,29 @@ export interface TagStyle {
   drawn: boolean
   /** Any CSS color: the drawn tag's paint, or the chip's text and border. Unset: the default look. */
   color?: string
-  /** A drawn tag's vector image (a URL, e.g. `/tags/new.svg` from `public/`); its opaque parts are painted in
-   * `color`. Null: a placeholder until the image exists. */
+  /** A drawn tag's vector image (a URL, e.g. `/tags/new.svg` from `public/`), in its own colors: the parts in
+   * `currentColor` (or, in a file without currentColor, the black parts) take `color` (lib/tagShape). Null: a
+   * placeholder until the image exists. */
   shape?: string | null
   /** A drawn tag's size in px. Default 62 × 22. */
   width?: number
   height?: number
+  /** Text written on a drawn tag (not the label, which stays for chips and screen readers). Unset: none. */
+  text?: string
+  /** The text's color (any CSS color) and size in px. Unset: the page background's color, and half the height. */
+  textColor?: string
+  textSize?: number
+  /** Moves the text from the tag's middle, in px (e.g. off a tag's hole). */
+  textX?: number
+  textY?: number
+  /** Turns the text, in degrees, clockwise (−180 to 180). Unset: level with the tag. */
+  textRotate?: number
+  /** A pattern over the tag-colored parts: diagonal stripes or checks of `color` and `patternColor`. Unset: plain. */
+  pattern?: 'stripes' | 'checks'
+  /** The pattern's second color (any CSS color) and the width of one stripe or square in px. Unset: the page
+   * background's color, and 4. */
+  patternColor?: string
+  patternSize?: number
 }
 
 export const site = {

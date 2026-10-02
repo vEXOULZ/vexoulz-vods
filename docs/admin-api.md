@@ -170,13 +170,15 @@ shape: `actor_kind`, `actor_id`, `actor_login`, `via`, dotted `action`s, `outcom
 It lists every actor, the worker's own jobs and refused requests too, where `/admin/audit` lists admins only. Same
 session cookie; errors there are problem details (`detail` is the message).
 
-## 6. Site tags — requested (not yet in twitch-archive)
+## 6. Site tags — in twitch-archive; the text and pattern fields are requested
 
 How each VOD tag shows on the site, edited on `/manage/tags`. Until the archive has these routes the site uses the
 built-in `site.tags` in `src/vods.config.ts` (the public GET answering 404 or failing means "none saved"), and
 `/manage/tags` shows those read-only. The dev mock implements all of it (`MOCK_SITE_TAGS=no` makes it answer 404).
 
-A tag: `{name, label, drawn, color, shape, width, height}`.
+A tag: `{name, label, drawn, color, shape, width, height, text, textColor, textSize, textX, textY, textRotate,
+pattern, patternColor, patternSize}`. The text and pattern fields are newer than the rest: until the archive keeps them, it may
+leave them out (the site reads them as `null`).
 
 - `name`: the VOD tag it styles, `^[a-z0-9][a-z0-9-]{0,31}$`, unique. `new` and `updated` come from the dates;
   any other name matches a synthetic VOD's own tag (`complete`, `compilation`, …). `new`, `updated` and
@@ -184,12 +186,27 @@ A tag: `{name, label, drawn, color, shape, width, height}`.
   though they can be restyled. Any other tag (`complete` included) can be added and removed freely.
 - `label`: 1–40 characters, shown on the chip or read out when drawn.
 - `drawn`: `true` hangs it off the thumbnail; `false` keeps it a chip by the date.
-- `color`: `null`, or a hex (`#rgb` to `#rrggbbaa`), `var(--vx-…)`, a color name (3–20 letters), or
-  `rgb()/rgba()/hsl()/hsla()/oklch()` with up to 60 characters of digits, `.,%/` spaces and letters inside. The site
-  checks it again before using it in CSS.
+- `color`: `null`, or at most 160 characters made only of letters, digits, spaces and `#.,%/()*+-`, that is one of:
+  a hex (`#rgb` to `#rrggbbaa`); a color name (3–20 letters); `var(--vx-…)` (`--vx-` then `[a-z0-9-]+`); or one
+  color function (`rgb rgba hsl hsla hwb lab lch oklab oklch color color-mix`) around the whole value. Inside it may
+  be `var(--vx-…)`, other color functions and `calc min max clamp`, nested at most 4 deep, and no other function.
+  `var()` with anything but one `--vx-` name, and `--` anywhere else, are refused. So relative colors and mixes work:
+  `oklch(from var(--vx-accent) calc(l - 0.15) c h)`, `color-mix(in oklch, var(--vx-ok) 60%, white)`. The rule keeps
+  out `url()` and anything else that could load or run something. The site checks it again before using it in CSS
+  (`isTagColor` in `src/lib/vodTags.ts`).
 - `shape`: `null` (a placeholder is drawn) or the uploaded SVG's path relative to the public API,
   `v1/site/tags/{name}.svg?v=<content hash>`. Read-only here: set by the shape routes below.
 - `width`, `height`: `null` or a whole number of px, 8–200.
+- `text`: `null` or 1–24 characters written on the drawn tag (trimmed). Not the label: the label stays as it is.
+- `textColor`: `null` (the page background) or a color, as `color`.
+- `textSize`: `null` (half the tag's height) or a whole number of px, 6–48.
+- `textX`, `textY`: `null` or a whole number of px, −100 to 100, nudging the text from the middle (+ is right, down).
+- `textRotate`: `null` or a whole number of degrees, −180 to 180, turning the text clockwise.
+  With `text` `null` the other five are `null` too (the archive may store them as sent or drop them).
+- `pattern`: `null` (plain), `"stripes"` (diagonal) or `"checks"`, over the parts drawn in the tag's color.
+- `patternColor`: `null` (the page background) or a color, as `color`: the pattern's second color.
+- `patternSize`: `null` (4) or a whole number of px, 2–40: one stripe's or square's width.
+  With `pattern` `null` the other two are `null` too.
 
 Public (the archive API at `/backend`, no session, cacheable for a minute or so):
 
@@ -203,7 +220,7 @@ Admin (session + CSRF as everywhere else; every change audited with before and a
 
 - `GET /admin/site/tags` → `{"tags": [tag, ...], "updatedAt", "updatedBy"}`; 404 while the feature isn't deployed
   (the page then shows the built-in tags read-only). Never saved → `{"tags": [], "updatedAt": null, ...}` is fine too.
-- `PUT /admin/site/tags` `{"tags": [{name, label, drawn, color, width, height}, ...]}` → the same as the GET. Replaces
+- `PUT /admin/site/tags` `{"tags": [{name, label, drawn, color, width, height, text, textColor, textSize, textX, textY, textRotate, pattern, patternColor, patternSize}, ...]}` → the same as the GET. Replaces
   the whole list, in order, all or nothing: at most 32 tags, and all three auto tags present; a 400 `{error, msg}`
   names the first refused tag and field (or the missing auto tag). `shape` in the body is ignored (shapes stay with their tag's name); a tag no longer listed loses its shape.
 - `PUT /admin/site/tags/{name}/shape` with the raw SVG as the body, `content-type: image/svg+xml` → the same as the
@@ -214,4 +231,6 @@ Admin (session + CSRF as everywhere else; every change audited with before and a
   set `shape` to its versioned path.
 - `DELETE /admin/site/tags/{name}/shape` → the same as the GET, with that tag's `shape` back to `null`.
 
-The site draws a shape as a CSS mask filled with the tag's color, so only the SVG's outline (its alpha) matters.
+The site draws the SVG in its own colors, except the parts meant to follow the tag: those drawn in `currentColor`,
+or, in an SVG that never uses `currentColor`, the black ones (`#000`, `black`, `rgb(0,0,0)`, or no fill at all) take
+the tag's color (or its pattern: fills and strokes only). The archive's cleaning must keep `currentColor` and the file's other colors as they are.
