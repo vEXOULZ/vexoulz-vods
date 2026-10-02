@@ -19,7 +19,8 @@ git config core.hooksPath .githooks   # once per clone: branch-name rules, see C
 ## Pages
 
 | path | what |
-|---|---|
+| `/` | home: the latest VOD, the two latest playthroughs with their details, and the most played games (each opens `/vods` narrowed to it) |
+| `/vods`, `/playthroughs` | the lists (plain VODs; playthroughs): an "All" reset, title search, a game dropdown (every game in the archive, most played first), a tag dropdown (new / updated, and the list's own tags such as complete; clicking a tag on a thumbnail sets it), date range, "load more"; all kept in the URL (`?tag=&title=&game=&from=&to=&page=`). The old `/vods?tab=playthroughs` goes to `/playthroughs` |
 | `/`, `/vods` | list: an "All" reset, title search, a game dropdown (every game in the archive, most played first), a tag dropdown (new / updated, and the tab's own tags such as complete; clicking a tag on a thumbnail sets it), date range, "load more"; all kept in the URL (`?tab=&tag=&title=&game=&from=&to=&page=`) |
 | `/vods/:id` | watch the VOD uploads |
 | `/live/:id` | watch the live uploads |

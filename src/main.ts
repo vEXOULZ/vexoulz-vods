@@ -19,12 +19,24 @@ import { loadTagConfig } from './lib/vodTags'
 import { vodsConfig } from './vods.config'
 
 const WatchPage = () => import('./pages/WatchPage.vue')
+const VodsPage = () => import('./pages/VodsPage.vue')
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/', component: () => import('./pages/VodsPage.vue') },
-    { path: '/vods', component: () => import('./pages/VodsPage.vue') },
+    { path: '/', component: () => import('./pages/HomePage.vue') },
+    // The lists. /vods?tab=playthroughs is the old link to the playthroughs.
+    {
+      path: '/vods',
+      component: VodsPage,
+      props: { tab: 'vods' },
+      beforeEnter: (to) => {
+        if (to.query.tab === undefined) return true
+        const { tab, ...query } = to.query
+        return { path: tab === 'playthroughs' ? '/playthroughs' : '/vods', query, hash: to.hash }
+      },
+    },
+    { path: '/playthroughs', component: VodsPage, props: { tab: 'playthroughs' } },
     // Same URLs as the old site: /vods/:id plays the VOD uploads, /live/:id the live-recorded ones,
     // /youtube/:id whichever set exists (live first).
     { path: '/vods/:id', component: WatchPage, props: (r) => ({ id: r.params.id, type: 'vod' }) },

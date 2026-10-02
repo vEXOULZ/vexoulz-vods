@@ -1,41 +1,28 @@
 <script setup lang="ts">
-// Past broadcasts: one filter bar (All resets, title search, game dropdown with every game in the archive, tag, date
-// range; all combinable and kept in the URL), a grid of cards, and "load more". On phones the bar wraps.
-// Unfiltered, the top keeps the newest VOD in its own panel (with a button to every VOD), the latest playthroughs (a
-// row that scrolls sideways, with a button to all of them) and the most played games as filter shortcuts; it
-// stays the same on every tab. The "see all" buttons open their tab and scroll down to the list.
-// Tabs above the bar split the list by tag: plain VODs (merges and splits included) and playthroughs (one game across
-// streams, as one video); the filters apply within the tab. A tag on a card links here narrowed to it (ThumbTags).
-import {
-  VxButton,
-  VxCallout,
-  VxDateRange,
-  VxEmptyState,
-  VxInput,
-  VxPopover,
-  VxSkeleton,
-  VxTabs,
-} from '@vexoulz/ui'
+// One list of VODs, by tag, each its own page (lib/listQuery, TABS): /vods has the plain VODs (merges and splits
+// included), /playthroughs the playthroughs (one game across streams, as one video). One filter bar (All resets, title
+// search, game dropdown with every game in the archive, tag, date range; all combinable and kept in the URL), a grid
+// of cards, and "load more". On phones the bar wraps. A tag on a card links here narrowed to it (ThumbTags).
+import { VxButton, VxCallout, VxDateRange, VxEmptyState, VxInput, VxPopover, VxSkeleton } from '@vexoulz/ui'
 import { resumeProgress, type GamePlayed, type Progress, type Vod } from '@vexoulz/vods-core'
 import { useVods, useVodsContext } from '@vexoulz/vods-core/vue'
 import { computed, nextTick, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import GamePicker from '@/components/GamePicker.vue'
-import LatestPlaythroughs from '@/components/LatestPlaythroughs.vue'
-import LatestVod from '@/components/LatestVod.vue'
-import MostPlayed from '@/components/MostPlayed.vue'
 import TagPicker from '@/components/TagPicker.vue'
 import VodCard from '@/components/VodCard.vue'
 import { loadGamesPlayed } from '@/lib/gamesPlayed'
-import { hasFilters, parseListQuery, TABS, tagFilters, toApiFilter, toListQuery, type ListState, type Tab } from '@/lib/listQuery'
+import { hasFilters, parseListQuery, toApiFilter, toListQuery, type ListState, type Tab } from '@/lib/listQuery'
 import { site, vodsConfig } from '@/vods.config'
 import VodsShell from '@/components/VodsShell.vue'
 import { watchDebounced } from '@/composables/watchDebounced'
 
+const props = defineProps<{ tab: Tab }>()
+
 const { client, progress } = useVodsContext()
 const route = useRoute()
 const router = useRouter()
-const state = computed(() => parseListQuery(route.query))
+const state = computed(() => parseListQuery(route.query, props.tab))
 
 function go(patch: Partial<ListState>, push = false) {
   const query = toListQuery({ ...state.value, page: 1, ...patch })
@@ -86,18 +73,9 @@ const game = computed({
 function resetAll() {
   cancelSearch()
   titleDraft.value = ''
-  router.replace({ query: toListQuery({ ...parseListQuery({}), tab: state.value.tab }) })
+  router.replace({ query: {} })
 }
 
-// ---- tabs ----
-const tabOptions = TABS.map(({ value, label }) => ({ value, label }))
-const tab = computed({
-  get: () => state.value.tab,
-  set: (t: Tab | undefined) => {
-    const next = t ?? 'vods'
-    go({ tab: next, tag: tagFilters(next, state.value.tag) ? state.value.tag : '' }, true)
-  },
-})
 const playthroughs = computed(() => state.value.tab === 'playthroughs')
 
 // ---- tag ----
@@ -105,7 +83,8 @@ const tag = computed({
   get: () => state.value.tag,
   set: (t: string) => go({ tag: t }),
 })
-// A tag picked on a card further down: bring the narrowed list's top into view.
+// A tag picked on a card further down: bring the narrowed list's top (the bar) into view.
+const bar = ref<HTMLElement | null>(null)
 watch(
   () => state.value.tag,
   async (t) => {
@@ -142,50 +121,14 @@ progress
 const resumeOf = (v: Vod) => resumeProgress(saved.value.get(v.id), v.duration)
 const resume = computed(() => new Map(vods.value.map((v) => [v.id, resumeOf(v)])))
 
-// ---- the top, when nothing is filtered: the latest VOD and playthroughs, whichever tab is open (both stay in the grid too) ----
-const showTop = computed(() => !hasFilters(state.value))
-const tabFilter = (t: Tab) => toApiFilter({ ...parseListQuery({}), tab: t })
-const { vods: latestVods } = useVods(() => ({ ...tabFilter('vods'), page: 1, perPage: 1 }))
-const latest = computed(() => latestVods.value[0] ?? null)
-const { vods: latestPlaythroughs, loading: playthroughsLoading } = useVods(() => ({ ...tabFilter('playthroughs'), page: 1, perPage: 3 }))
-// "See all VODs" / "See all playthroughs": that tab, unfiltered, scrolled to the list.
-const bar = ref<HTMLElement | null>(null)
-async function seeAll(t: Tab) {
-  if (t !== state.value.tab || hasFilters(state.value)) await go({ ...parseListQuery({}), tab: t }, true)
-  // Once the list is in: while it loads the page may be too short to scroll that far.
-  if (loading.value) {
-    await new Promise<void>((done) => {
-      const stop = watch(loading, (l) => {
-        if (l) return
-        stop()
-        done()
-      })
-    })
-  }
-  await nextTick()
-  bar.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-}
-
 const countText = computed(() => `${(shownFrom.value + vods.value.length).toLocaleString()} of ${total.value.toLocaleString()}`)
 </script>
 
 <template>
   <VodsShell>
 
-    <section v-if="showTop" class="top">
-      <LatestVod v-if="latest" :vod="latest" :progress="resumeOf(latest)" @all="seeAll('vods')" />
-      <LatestPlaythroughs
-        :vods="latestPlaythroughs"
-        :loading="playthroughsLoading"
-        :resume="resumeOf"
-        @all="seeAll('playthroughs')"
-      />
-      <MostPlayed :games="games" :error="gamesError" @game="(g) => go({ game: g }, true)" @retry="fetchGames(true)" />
-    </section>
-
     <div ref="bar" class="bar">
       <h1 class="vx-display">{{ playthroughs ? 'Playthroughs' : 'Past broadcasts' }}</h1>
-      <VxTabs v-model="tab" :options="tabOptions" label="Kind of VOD" class="tabs" />
       <div class="filters">
         <VxButton :pressed="!hasFilters(state)" label="Clear every filter" @click="resetAll">All</VxButton>
         <VxInput v-model="titleDraft" class="search" type="search" placeholder="Search titles…" clearable>
@@ -243,7 +186,6 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
 <style scoped>
 .bar { scroll-margin-top: 16px; display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
 .bar h1 { font-size: 28px; }
-.tabs { align-self: flex-start; max-width: 100%; }
 .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .search { flex: 1 1 220px; max-width: 360px; }
 @container vx-site (max-width: 700px) {
@@ -251,7 +193,6 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
   .search { order: -1; flex-basis: 100%; max-width: none; }
 }
 .date-pop { display: flex; flex-direction: column; gap: 8px; padding: 8px; }
-.top { display: flex; flex-direction: column; gap: 10px; margin-bottom: 28px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 24px 18px; }
 .sk { display: flex; flex-direction: column; gap: 8px; }
 .more { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 28px; }
