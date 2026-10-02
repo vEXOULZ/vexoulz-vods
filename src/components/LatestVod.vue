@@ -79,7 +79,7 @@ const { src: thumb, srcset: thumbSet, onLoad: thumbLoaded, onError: thumbFailed 
             {{ progress ? (grown ? `▶ Watch what's new (${toClock(progress.t)})` : `▶ Resume at ${toClock(progress.t)}`) : '▶ Watch' }}
           </VxLink>
           <VxLink v-if="progress" :to="watchPath(vod, 0)" class="vx-btn">From the start</VxLink>
-          <SeeAllButton @click="emit('all')">See all VODs</SeeAllButton>
+          <SeeAllButton class="all" @click="emit('all')">See all VODs</SeeAllButton>
         </div>
       </div>
     </div>
@@ -118,6 +118,7 @@ const { src: thumb, srcset: thumbSet, onLoad: thumbLoaded, onError: thumbFailed 
 .meta { display: flex; flex-wrap: wrap; gap: 6px; }
 .details { display: flex; flex-direction: column; gap: 10px; margin-top: auto; padding-top: 6px; border-top: 1px solid var(--vx-line); }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.all { margin-left: auto; }
 .chapter {
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px;
   padding: 4px 6px; border-radius: var(--vx-radius-sm); color: var(--vx-ink); text-decoration: none; font-size: 13px;

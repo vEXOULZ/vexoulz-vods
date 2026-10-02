@@ -32,7 +32,7 @@ const emit = defineEmits<{ all: [] }>()
   list-style: none; margin: 0; padding: 0 0 6px; display: flex; gap: 18px;
   overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: thin; scrollbar-color: var(--vx-line) transparent;
 }
-.all { align-self: stretch; justify-content: center; }
+.all { align-self: flex-end; }
 .row > li { flex: 0 0 min(260px, 78%); min-width: 0; scroll-snap-align: start; }
 .sk { display: flex; flex-direction: column; gap: 8px; }
 </style>
