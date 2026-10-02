@@ -1,8 +1,8 @@
 // The Tags page's drafts: each tag as its fields are typed (sizes as text), the checks the archive also makes, and
 // the list PUT /admin/site/tags takes.
 import type { TagInput } from './api'
-import { TAG_COLOR, TAG_LABEL_MAX, TAG_NAME, TAG_SIZE, type RawTag } from '@/lib/vodTags'
-import type { TagStyle } from '@/vods.config'
+import { AUTO_TAGS, isAutoTag, TAG_COLOR, TAG_LABEL_MAX, TAG_NAME, TAG_SIZE, type RawTag } from '@/lib/vodTags'
+import { site, type TagStyle } from '@/vods.config'
 
 export interface TagDraft {
   /** Stable across edits, for v-for and errors (a name can change while it's new). */
@@ -17,6 +17,8 @@ export interface TagDraft {
   shape: string | null
   /** Saved in the archive: its name is fixed and it can take a shape. */
   saved: boolean
+  /** Set automatically (AUTO_TAGS): its name is fixed and it can't be removed. */
+  auto: boolean
 }
 
 export type TagField = 'name' | 'label' | 'color' | 'width' | 'height'
@@ -32,6 +34,7 @@ export const draftOf = (t: RawTag, saved = true): TagDraft => ({
   height: t.height == null ? '' : String(t.height),
   shape: t.shape,
   saved,
+  auto: isAutoTag(t.name),
 })
 export const blankDraft = (): TagDraft => draftOf({ name: '', label: '', drawn: true, color: null, shape: null, width: null, height: null }, false)
 
@@ -40,6 +43,15 @@ export const rawOf = (tags: Record<string, TagStyle>): RawTag[] =>
   Object.entries(tags).map(([name, s]) => ({
     name, label: s.label, drawn: s.drawn, color: s.color ?? null, shape: null, width: s.width ?? null, height: s.height ?? null,
   }))
+
+/** The archive's list as drafts, with any auto tag it lacks added from `site.tags` (unsaved, so Save adds it). */
+export function draftsOf(list: RawTag[]): TagDraft[] {
+  const builtIn = rawOf(site.tags)
+  const missing = AUTO_TAGS.filter((name) => !list.some((t) => t.name === name)).map(
+    (name) => builtIn.find((t) => t.name === name) ?? { name, label: name, drawn: false, color: null, shape: null, width: null, height: null },
+  )
+  return [...list.map((t) => draftOf(t)), ...missing.map((t) => draftOf(t, false))]
+}
 
 const inputOf = (t: RawTag): TagInput => ({ name: t.name, label: t.label, drawn: t.drawn, color: t.color, width: t.width, height: t.height })
 

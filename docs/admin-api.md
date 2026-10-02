@@ -179,7 +179,9 @@ built-in `site.tags` in `src/vods.config.ts` (the public GET answering 404 or fa
 A tag: `{name, label, drawn, color, shape, width, height}`.
 
 - `name`: the VOD tag it styles, `^[a-z0-9][a-z0-9-]{0,31}$`, unique. `new` and `updated` come from the dates;
-  any other name matches a synthetic VOD's own tag (`complete`, `compilation`, …).
+  any other name matches a synthetic VOD's own tag (`complete`, `compilation`, …). `new`, `updated` and
+  `compilation` are **auto tags** (set by the site or the archive, not by an admin): every saved list must keep them,
+  though they can be restyled. Any other tag (`complete` included) can be added and removed freely.
 - `label`: 1–40 characters, shown on the chip or read out when drawn.
 - `drawn`: `true` hangs it off the thumbnail; `false` keeps it a chip by the date.
 - `color`: `null`, or a hex (`#rgb` to `#rrggbbaa`), `var(--vx-…)`, a color name (3–20 letters), or
@@ -202,8 +204,8 @@ Admin (session + CSRF as everywhere else; every change audited with before and a
 - `GET /admin/site/tags` → `{"tags": [tag, ...], "updatedAt", "updatedBy"}`; 404 while the feature isn't deployed
   (the page then shows the built-in tags read-only). Never saved → `{"tags": [], "updatedAt": null, ...}` is fine too.
 - `PUT /admin/site/tags` `{"tags": [{name, label, drawn, color, width, height}, ...]}` → the same as the GET. Replaces
-  the whole list, in order, all or nothing: at most 32 tags; a 400 `{error, msg}` names the first refused tag and
-  field. `shape` in the body is ignored (shapes stay with their tag's name); a tag no longer listed loses its shape.
+  the whole list, in order, all or nothing: at most 32 tags, and all three auto tags present; a 400 `{error, msg}`
+  names the first refused tag and field (or the missing auto tag). `shape` in the body is ignored (shapes stay with their tag's name); a tag no longer listed loses its shape.
 - `PUT /admin/site/tags/{name}/shape` with the raw SVG as the body, `content-type: image/svg+xml` → the same as the
   GET. 404 for a tag not in the saved list, 415 for another content type, 413 over 64 KB, 400 if the SVG isn't safe.
   The archive must **parse** the SVG (not pattern-match it) and keep an allow-list of elements and attributes:

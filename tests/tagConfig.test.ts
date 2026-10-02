@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AdminClient } from '@/admin/api'
-import { blankDraft, draftOf, previewOf, rawOf, tagChanges } from '@/admin/tags'
+import { blankDraft, draftOf, draftsOf, previewOf, rawOf, tagChanges } from '@/admin/tags'
 import { fromRaw, loadTagConfig, tagConfig, type RawTag } from '@/lib/vodTags'
 import { site } from '@/vods.config'
 
@@ -73,6 +73,24 @@ describe('tagChanges', () => {
     expect(list.map((t) => t.name)).toEqual(['new', 'updated', 'complete', 'compilation'])
     const d = draftOf(raw({ shape: 'v1/site/tags/new.svg?v=1', width: '' as never, color: 'nope(' }))
     expect(previewOf(d, '/backend')).toMatchObject({ shape: '/backend/v1/site/tags/new.svg?v=1', color: undefined, width: undefined })
+  })
+})
+
+describe('draftsOf', () => {
+  it('always lists the auto tags, and only those are auto', () => {
+    const drafts = draftsOf([raw({ name: 'complete', label: 'complete' }), raw({ name: 'updated', label: 'fresh' })])
+    expect(drafts.map((d) => [d.name, d.auto, d.saved])).toEqual([
+      ['complete', false, true],
+      ['updated', true, true],
+      ['new', true, false],
+      ['compilation', true, false],
+    ])
+    expect(drafts[1]!.label).toBe('fresh')
+    expect(blankDraft().auto).toBe(false)
+  })
+  it('makes a list missing an auto tag a change to save', () => {
+    const saved = [raw({ name: 'complete', label: 'complete' })]
+    expect(tagChanges(saved, draftsOf(saved)).changed).toBe(true)
   })
 })
 

@@ -53,6 +53,9 @@ export const TAG_NAME = /^[a-z0-9][a-z0-9-]{0,31}$/
 export const TAG_COLOR = /^(#[0-9a-f]{3,8}|var\(--vx-[a-z0-9-]+\)|[a-z]{3,20}|(rgba?|hsla?|oklch)\([0-9.,%\s/a-z-]{1,60}\))$/i
 export const TAG_SIZE = { min: 8, max: 200 }
 export const TAG_LABEL_MAX = 40
+/** Tags the site or the archive sets by itself: always listed on /manage/tags, and can't be removed there. */
+export const AUTO_TAGS: readonly string[] = ['new', 'updated', 'compilation']
+export const isAutoTag = (name: string) => AUTO_TAGS.includes(name)
 
 /** The archive's list as tag styles: shapes resolved against the API, anything malformed dropped or defaulted. */
 export function fromRaw(raw: RawTag[], apiBase: string): Record<string, TagStyle> {

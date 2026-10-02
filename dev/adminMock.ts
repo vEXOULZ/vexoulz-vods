@@ -559,6 +559,8 @@ function checkTags(list: unknown): SiteTag[] | string {
     }
     out.push({ name: t.name, label: t.label.trim(), drawn: t.drawn, color: t.color ?? null, width: t.width ?? null, height: t.height ?? null })
   }
+  const gone = ['new', 'updated', 'compilation'].find((name) => !seen.has(name))
+  if (gone) return `${gone} is set automatically and can't be removed`
   return out
 }
 /**

@@ -7,18 +7,17 @@ import { computed, onMounted, ref } from 'vue'
 import { AdminApiError, type SiteTags } from '@/admin/api'
 import ManageShell from '@/admin/ManageShell.vue'
 import { admin } from '@/admin/session'
-import { blankDraft, draftOf, previewOf, rawOf, tagChanges, type TagDraft } from '@/admin/tags'
+import { blankDraft, draftsOf, previewOf, rawOf, tagChanges, type TagDraft } from '@/admin/tags'
 import TagMark from '@/components/TagMark.vue'
 import { errorMessage } from '@/lib/errors'
 import { loadTagConfig, TAG_SIZE } from '@/lib/vodTags'
 import { site, vodsConfig } from '@/vods.config'
 
 const toast = useToast()
-/** Where each built-in tag comes from, for the admin who wonders why it's there. */
+/** Where each auto tag comes from, for the admin who wonders why it's there. */
 const ABOUT: Record<string, string> = {
   new: 'Set from the dates: first streamed in the last 7 days.',
   updated: 'Set from the dates: a playthrough with a new stream in the last 7 days.',
-  complete: 'Set on a playthrough\'s manage page: played to the end.',
   compilation: 'On every playthrough.',
 }
 const SWATCHES = ['accent', 'info', 'ok', 'warn', 'bad', 'ink', 'muted'].map((t) => `var(--vx-${t})`)
@@ -36,7 +35,7 @@ const shaping = ref<string | null>(null)
 
 function take(d: SiteTags) {
   data.value = d
-  drafts.value = d.tags.map((t) => draftOf(t))
+  drafts.value = draftsOf(d.tags)
 }
 async function load() {
   loadError.value = null
@@ -73,7 +72,9 @@ function undo() {
   saveError.value = null
 }
 const add = () => drafts.value.push(blankDraft())
-const remove = (d: TagDraft) => (drafts.value = drafts.value.filter((x) => x.key !== d.key))
+function remove(d: TagDraft) {
+  if (!d.auto) drafts.value = drafts.value.filter((x) => x.key !== d.key)
+}
 function move(d: TagDraft, by: -1 | 1) {
   const list = [...drafts.value]
   const i = list.indexOf(d)
@@ -161,8 +162,8 @@ onMounted(() => {
         </div>
 
         <div class="fields">
-          <VxField label="Name" :error="err(d, 'name')" :help="d.saved ? ABOUT[d.name] ?? 'As set on VODs.' : 'As set on VODs; can\'t change once saved.'">
-            <template #default="{ id }"><VxInput :id="id" v-model="d.name" mono :disabled="d.saved" :invalid="!!err(d, 'name')" placeholder="speedrun" /></template>
+          <VxField label="Name" :error="err(d, 'name')" :help="d.auto ? ABOUT[d.name] : d.saved ? undefined : 'Can\'t change once saved.'">
+            <template #default="{ id }"><VxInput :id="id" v-model="d.name" mono :disabled="d.saved || d.auto" :invalid="!!err(d, 'name')" placeholder="speedrun" /></template>
           </VxField>
           <VxField label="Label" :error="err(d, 'label')" help="On its chip, or read out when drawn.">
             <template #default="{ id }"><VxInput :id="id" v-model="d.label" :invalid="!!err(d, 'label')" /></template>
@@ -216,7 +217,8 @@ onMounted(() => {
         <div class="row-actions">
           <VxButton size="sm" variant="ghost" :disabled="i === 0" :aria-label="`Move ${d.name || 'tag'} up`" @click="move(d, -1)">↑</VxButton>
           <VxButton size="sm" variant="ghost" :disabled="i === drafts.length - 1" :aria-label="`Move ${d.name || 'tag'} down`" @click="move(d, 1)">↓</VxButton>
-          <VxButton size="sm" variant="ghost" @click="remove(d)">Remove</VxButton>
+          <span v-if="d.auto" class="auto" title="Set automatically; can't be removed">AUTO</span>
+          <VxButton v-else size="sm" variant="ghost" @click="remove(d)">Remove</VxButton>
         </div>
       </section>
 
@@ -261,7 +263,11 @@ onMounted(() => {
 .file { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
 .upload:focus-within { outline: 2px solid var(--vx-ring, var(--vx-accent)); outline-offset: 2px; }
 .note { font-size: 12px; }
-.row-actions { display: flex; gap: 4px; }
+.row-actions { display: flex; align-items: center; gap: 4px; }
+.auto {
+  margin-left: 4px; padding: 4px 6px; border: 1px solid currentColor; border-radius: 4px;
+  font: 600 10px/1 var(--vx-font-mono); letter-spacing: .08em; color: var(--vx-info);
+}
 .add { margin-bottom: 16px; }
 .savebar {
   position: sticky; bottom: 12px; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
