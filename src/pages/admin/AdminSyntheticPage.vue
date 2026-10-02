@@ -12,6 +12,7 @@ import PlaythroughBuilder from '@/admin/PlaythroughBuilder.vue'
 import { admin } from '@/admin/session'
 import TimeInput from '@/admin/TimeInput.vue'
 import { errorMessage } from '@/lib/errors'
+import { COMPLETE_TAG } from '@/lib/vodTags'
 
 const props = defineProps<{ id?: string }>()
 const router = useRouter()
@@ -70,6 +71,14 @@ const builderOpen = ref(false)
 
 // ── checks ──
 const tagList = computed(() => [...new Set(form.value.tags.split(',').map((t) => t.trim()).filter(Boolean))])
+// A playthrough played to the end gets the `complete` tag (a tag on its thumbnail).
+const complete = computed({
+  get: () => tagList.value.includes(COMPLETE_TAG),
+  set: (on: boolean) => {
+    const rest = tagList.value.filter((t) => t !== COMPLETE_TAG)
+    form.value.tags = (on ? [...rest, COMPLETE_TAG] : rest).join(', ')
+  },
+})
 const idError = computed(() => {
   if (!isNew.value) return null
   const id = form.value.id.trim()
@@ -177,10 +186,11 @@ watchEffect(() => (document.title = `${props.id ?? 'New synthetic VOD'} · Manag
           <VxField label="Title" help="Empty: the first source's.">
             <template #default="{ id: fid }"><VxInput :id="fid" v-model="form.title" /></template>
           </VxField>
-          <VxField label="Tags" help="Comma-separated; a playthrough is tagged compilation.">
+          <VxField label="Tags" help="Comma-separated; a playthrough is tagged compilation, and complete once played to the end.">
             <template #default="{ id: fid }"><VxInput :id="fid" v-model="form.tags" placeholder="compilation" /></template>
           </VxField>
         </div>
+        <VxCheckbox v-model="complete" label="Played to the end: shows a complete tag on its thumbnail" />
         <VxCheckbox v-model="form.supersedes" label="Stands in for its sources (a merge or split): they leave the public lists and redirect here" />
       </section>
 

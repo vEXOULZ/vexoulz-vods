@@ -1,5 +1,6 @@
 // The list page keeps its filters in the URL so a link reproduces the view: ?tab=&title=&game=&from=&to=&page=
 import type { VodListOptions } from '@vexoulz/vods-core'
+import { tagStyle } from './vodTags'
 
 /**
  * The list's tabs, one per VOD tag the site knows. Plain VODs (no tags) first; a tag the site doesn't know yet has no
@@ -10,8 +11,8 @@ export const TABS = [
   { value: 'playthroughs', label: 'Playthroughs', tag: 'compilation' },
 ] as const
 
-/** How a VOD tag reads on a chip. */
-export const tagLabel = (tag: string) => (tag === 'compilation' ? 'playthrough' : tag)
+/** How a VOD tag reads (`site.tags`). */
+export const tagLabel = (tag: string) => tagStyle(tag).label
 
 export type Tab = (typeof TABS)[number]['value']
 
