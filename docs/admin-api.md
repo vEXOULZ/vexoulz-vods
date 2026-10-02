@@ -186,9 +186,14 @@ leave them out (the site reads them as `null`).
   though they can be restyled. Any other tag (`complete` included) can be added and removed freely.
 - `label`: 1–40 characters, shown on the chip or read out when drawn.
 - `drawn`: `true` hangs it off the thumbnail; `false` keeps it a chip by the date.
-- `color`: `null`, or a hex (`#rgb` to `#rrggbbaa`), `var(--vx-…)`, a color name (3–20 letters), or
-  `rgb()/rgba()/hsl()/hsla()/oklch()` with up to 60 characters of digits, `.,%/` spaces and letters inside. The site
-  checks it again before using it in CSS.
+- `color`: `null`, or at most 160 characters made only of letters, digits, spaces and `#.,%/()*+-`, that is one of:
+  a hex (`#rgb` to `#rrggbbaa`); a color name (3–20 letters); `var(--vx-…)` (`--vx-` then `[a-z0-9-]+`); or one
+  color function (`rgb rgba hsl hsla hwb lab lch oklab oklch color color-mix`) around the whole value. Inside it may
+  be `var(--vx-…)`, other color functions and `calc min max clamp`, nested at most 4 deep, and no other function.
+  `var()` with anything but one `--vx-` name, and `--` anywhere else, are refused. So relative colors and mixes work:
+  `oklch(from var(--vx-accent) calc(l - 0.15) c h)`, `color-mix(in oklch, var(--vx-ok) 60%, white)`. The rule keeps
+  out `url()` and anything else that could load or run something. The site checks it again before using it in CSS
+  (`isTagColor` in `src/lib/vodTags.ts`).
 - `shape`: `null` (a placeholder is drawn) or the uploaded SVG's path relative to the public API,
   `v1/site/tags/{name}.svg?v=<content hash>`. Read-only here: set by the shape routes below.
 - `width`, `height`: `null` or a whole number of px, 8–200.

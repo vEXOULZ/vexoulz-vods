@@ -2,7 +2,7 @@
 // the list PUT /admin/site/tags takes.
 import type { TagInput } from './api'
 import {
-  AUTO_TAGS, isAutoTag, TAG_COLOR, TAG_LABEL_MAX, TAG_NAME, TAG_SIZE, TAG_TEXT_MAX, TAG_TEXT_NUDGE, TAG_TEXT_SIZE,
+  AUTO_TAGS, isAutoTag, isTagColor, TAG_LABEL_MAX, TAG_NAME, TAG_SIZE, TAG_TEXT_MAX, TAG_TEXT_NUDGE, TAG_TEXT_SIZE,
   TAG_PATTERN_SIZE, TAG_PATTERNS, type RawTag, type TagPattern,
 } from '@/lib/vodTags'
 import { site, type TagStyle } from '@/vods.config'
@@ -110,7 +110,7 @@ export function tagChanges(saved: RawTag[], drafts: TagDraft[]) {
   const seen = new Set<string>()
   const colorOf = (key: number, field: 'color' | 'textColor' | 'patternColor', value: string) => {
     const c = value.trim()
-    if (c && !TAG_COLOR.test(c)) flag(key, field, 'A hex, var(--vx-…), a color name, or rgb()/hsl()/oklch()')
+    if (c && !isTagColor(c)) flag(key, field, 'A hex, var(--vx-…), a color name, or a color function: oklch(from var(--vx-ok) calc(l - 0.1) c h)')
     return c || null
   }
   const body: TagInput[] = drafts.map((d) => {
@@ -157,7 +157,7 @@ export function previewOf(d: TagDraft, apiBase: string): TagStyle {
     const v = whole(value, range, () => {})
     return v != null && Number.isInteger(v) && v >= range.min && v <= range.max ? v : undefined
   }
-  const color = (c: string) => (TAG_COLOR.test(c.trim()) ? c.trim() : undefined)
+  const color = (c: string) => (isTagColor(c.trim()) ? c.trim() : undefined)
   const text = d.textOn ? d.text.trim().slice(0, TAG_TEXT_MAX) : ''
   return {
     label: d.label.trim() || d.name || 'tag',

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AdminClient } from '@/admin/api'
 import { blankDraft, draftOf, draftsOf, previewOf, rawOf, tagChanges } from '@/admin/tags'
-import { fromRaw, loadTagConfig, tagConfig, type RawTag } from '@/lib/vodTags'
+import { fromRaw, isTagColor, loadTagConfig, tagConfig, type RawTag } from '@/lib/vodTags'
 import { site } from '@/vods.config'
 
 const raw = (o: Partial<RawTag> = {}): RawTag => ({ name: 'new', label: 'new', drawn: true, color: null, shape: null, width: null, height: null, ...NO_TEXT, ...NO_PATTERN, ...o })
@@ -37,6 +37,25 @@ describe('fromRaw', () => {
     )
     expect(out.new).toMatchObject({ text: '100%', textColor: 'var(--vx-ink)', textSize: 12, textX: -3, textY: 2 })
     expect(out.x).toMatchObject({ text: 'y'.repeat(24), textColor: undefined, textSize: undefined, textX: undefined, textY: undefined })
+  })
+})
+
+describe('isTagColor', () => {
+  it('takes plain colors, theme tokens and color functions', () => {
+    for (const c of [
+      '#abc', '#a1b2c3d4', 'rebeccapurple', 'var(--vx-accent)', 'rgb(255 0 0 / 50%)', 'hsl(120, 50%, 40%)',
+      'oklch(from var(--vx-accent) calc(l - 0.15) c h)', 'color-mix(in oklch, var(--vx-ok) 60%, white)',
+      'rgb(from var(--vx-bad) r g b / 0.5)', 'oklch(from #f00 clamp(0.2, l * 0.8, 0.9) c calc(h + 30))',
+      'color-mix(in srgb, oklch(from var(--vx-info) l c h) 50%, transparent)',
+    ]) expect(isTagColor(c), c).toBe(true)
+  })
+  it('refuses anything that could do more than color', () => {
+    for (const c of [
+      'oklch(var(--vx-accent) calc(l - 0.15) c h', 'url(//evil/x.png)', 'oklch(from url(x) l c h)', 'var(--other)',
+      'var(--vx-a, url(x))', 'image-set(x)', 'red;background:url(x)', 'rgb(0 0 0) url(x)', 'calc(1 + 1)',
+      'rgb(1 2 3))', 'oklch(\\75 rl c h)', 'rgb(0 0 0) rgb(0 0 0)', `rgb(${'1 '.repeat(90)})`,
+      'rgb(calc(calc(calc(calc(1)))))', 'expression(alert(1))', '#ab',
+    ]) expect(isTagColor(c), c).toBe(false)
   })
 })
 
