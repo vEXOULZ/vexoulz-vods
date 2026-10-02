@@ -13,6 +13,7 @@ const LINKS = [
   { label: 'VODs', to: '/manage/vods' },
   { label: 'Storage', to: '/manage/storage' },
   { label: 'Settings', to: '/manage/settings' },
+  { label: 'Tags', to: '/manage/tags' },
   { label: 'Audit', to: '/manage/audit' },
 ]
 const current = (to: string, exact = false) => (exact ? route.path === to : route.path === to || route.path.startsWith(`${to}/`))

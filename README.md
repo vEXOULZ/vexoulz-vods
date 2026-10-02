@@ -67,6 +67,8 @@ from the public archive API and edits stay in memory) unless
 `.env.local` names a worker, run `npm run dev -- --mode mock` with `VITE_DEV_ADMIN_TARGET=` (empty) in
 `.env.mock.local`. The mock also answers the public `/backend/vods/:id` for VODs it merged or split, so the watch
 page shows the result (gap chapters, old links sent to the merged VOD).
+It also keeps the site tags edited on `/manage/tags` (and serves `/backend/v1/site/tags`); `MOCK_SITE_TAGS=no`
+answers 404 there instead, as the archive does until it has those routes.
 
 ## Signing in
 
@@ -79,7 +81,9 @@ sign-in off.
 ## Assets still needed
 
 - The Twitch mark on the header's Manage button (`src/components/ManageLink.vue`, a `VxPlaceholder` for now).
-- A vector shape for each drawn thumbnail tag: new, updated and complete (`VxPlaceholder`s for now). Put the SVGs in `public/tags/` and set each one's `shape` in `site.tags` (`src/vods.config.ts`), which also sets each tag's color and whether it's drawn or a chip.
+- A vector shape for each drawn thumbnail tag: new, updated and complete (`VxPlaceholder`s for now). Upload them on
+  `/manage/tags` once the archive has the site tags routes (`docs/admin-api.md` §6); until then put the SVGs in
+  `public/tags/` and set each one's `shape` in `site.tags` (`src/vods.config.ts`).
 
 ## Config
 
