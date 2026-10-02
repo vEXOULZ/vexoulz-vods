@@ -79,6 +79,7 @@ sign-in off.
 ## Assets still needed
 
 - The Twitch mark on the header's Manage button (`src/components/ManageLink.vue`, a `VxPlaceholder` for now).
+- The three thumbnail tags, new, updated and complete (`src/components/ThumbTags.vue`, `VxPlaceholder`s for now).
 
 ## Config
 

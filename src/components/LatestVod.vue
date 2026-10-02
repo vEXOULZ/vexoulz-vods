@@ -6,6 +6,7 @@ import { gamePalette, learnGameColors, VxButton, VxChapterBar, VxChip, VxLink, V
 import { boxArt, isFinished, toClock, watchPath, type Progress, type Vod } from '@vexoulz/vods-core'
 import { computed, watchEffect } from 'vue'
 import SeeAllButton from './SeeAllButton.vue'
+import ThumbTags from './ThumbTags.vue'
 import { useThumbnail } from '@/composables/useThumbnail'
 import { gamesWithArt } from '@/lib/art'
 import { relativeDay } from '@/lib/dates'
@@ -43,6 +44,7 @@ const { src: thumb, srcset: thumbSet, onLoad: thumbLoaded, onError: thumbFailed 
         <span class="dur vx-mono">{{ toClock(vod.duration) }}</span>
         <span v-if="progress" class="watched" :style="{ width: `${watched * 100}%` }"></span>
         <VxChapterBar v-if="vod.chapters.length" class="bar" :chapters="vod.chapters" :palette="palette" />
+        <ThumbTags :vod="vod" class="tags" />
       </VxLink>
       <div class="vx-eyebrow">Latest broadcast · {{ relativeDay(vod.createdAt) }}</div>
       <h2 class="title"><VxLink :to="to">{{ title }}</VxLink></h2>
@@ -110,6 +112,7 @@ const { src: thumb, srcset: thumbSet, onLoad: thumbLoaded, onError: thumbFailed 
   position: absolute; top: 8px; right: 8px; font-size: 12px; padding: 0 6px; border-radius: var(--vx-radius-sm);
   background: rgb(0 0 0 / 0.75); color: #fff;
 }
+.tags { position: absolute; left: -5px; top: 12px; z-index: 1; }
 .watched { position: absolute; left: 0; bottom: 4px; height: 3px; background: var(--vx-accent); z-index: 1; }
 .bar { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 0 0 var(--vx-radius) var(--vx-radius); overflow: hidden; }
 .title { margin: 0; font-size: 19px; line-height: 1.3; overflow-wrap: anywhere; }
