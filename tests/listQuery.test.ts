@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Vod } from '@vexoulz/vods-core'
-import { hasFilters, parseListQuery, tabOf, tagLink, toApiFilter, toListQuery } from '@/lib/listQuery'
+import { hasFilters, listPath, parseListQuery, tabOf, tagLink, toApiFilter, toListQuery } from '@/lib/listQuery'
 import { RECENT_MS } from '@/lib/vodTags'
 
 describe('parseListQuery', () => {
@@ -44,24 +44,25 @@ describe('toListQuery', () => {
     expect(toListQuery(parseListQuery(q))).toEqual(q)
   })
 
-  it('reads the tab, keeping it out of the URL on the default one', () => {
-    expect(parseListQuery({ tab: 'playthroughs' }).tab).toBe('playthroughs')
-    expect(parseListQuery({ tab: 'nope' }).tab).toBe('vods')
-    expect(toListQuery(parseListQuery({ tab: 'playthroughs', page: '2' }))).toEqual({ tab: 'playthroughs', page: '2' })
-    expect(toListQuery(parseListQuery({ tab: 'vods' }))).toEqual({})
+  it('takes the tab from the page, keeping it out of the query', () => {
+    expect(parseListQuery({}, 'playthroughs').tab).toBe('playthroughs')
+    expect(parseListQuery({ tab: 'playthroughs' }).tab).toBe('vods')
+    expect(toListQuery(parseListQuery({ page: '2' }, 'playthroughs'))).toEqual({ page: '2' })
+    expect(listPath('vods')).toBe('/vods')
+    expect(listPath('playthroughs')).toBe('/playthroughs')
   })
 })
 
 describe('the tag filter', () => {
   it('takes the date tags in any tab, set tags only where VODs have them', () => {
     expect(parseListQuery({ tag: 'new' }).tag).toBe('new')
-    expect(parseListQuery({ tab: 'playthroughs', tag: 'updated' }).tag).toBe('updated')
-    expect(parseListQuery({ tab: 'playthroughs', tag: 'complete' }).tag).toBe('complete')
+    expect(parseListQuery({ tag: 'updated' }, 'playthroughs').tag).toBe('updated')
+    expect(parseListQuery({ tag: 'complete' }, 'playthroughs').tag).toBe('complete')
     // Plain VODs have no tags; a tab's own tag isn't a filter; nor is a bad name.
     expect(parseListQuery({ tag: 'complete' }).tag).toBe('')
-    expect(parseListQuery({ tab: 'playthroughs', tag: 'compilation' }).tag).toBe('')
-    expect(parseListQuery({ tab: 'playthroughs', tag: 'Bad Tag' }).tag).toBe('')
-    expect(toListQuery(parseListQuery({ tab: 'playthroughs', tag: 'complete' }))).toEqual({ tab: 'playthroughs', tag: 'complete' })
+    expect(parseListQuery({ tag: 'compilation' }, 'playthroughs').tag).toBe('')
+    expect(parseListQuery({ tag: 'Bad Tag' }, 'playthroughs').tag).toBe('')
+    expect(toListQuery(parseListQuery({ tag: 'complete' }, 'playthroughs'))).toEqual({ tag: 'complete' })
     expect(hasFilters(parseListQuery({ tag: 'new' }))).toBe(true)
   })
 
@@ -69,16 +70,16 @@ describe('the tag filter', () => {
     const now = Date.UTC(2026, 9, 2, 12)
     const week = new Date(now - RECENT_MS)
     expect(toApiFilter(parseListQuery({ tag: 'new' }), now)).toMatchObject({ tag: undefined, firstLiveFrom: week })
-    const updated = toApiFilter(parseListQuery({ tab: 'playthroughs', tag: 'updated' }), now)
+    const updated = toApiFilter(parseListQuery({ tag: 'updated' }, 'playthroughs'), now)
     expect(updated).toMatchObject({ tag: 'compilation', firstLiveBefore: week, lastLiveFrom: week })
     expect(updated.tags).toBeUndefined()
-    expect(toApiFilter(parseListQuery({ tab: 'playthroughs', tag: 'complete' }), now)).toMatchObject({ tag: 'compilation', tags: ['complete'] })
+    expect(toApiFilter(parseListQuery({ tag: 'complete' }, 'playthroughs'), now)).toMatchObject({ tag: 'compilation', tags: ['complete'] })
   })
 
   it("links a VOD's tag to its own tab", () => {
     const vod = (tags: string[]) => ({ tags }) as unknown as Vod
     expect(tabOf(vod(['compilation', 'complete']))).toBe('playthroughs')
-    expect(tagLink(vod(['compilation', 'complete']), 'complete')).toBe('/vods?tab=playthroughs&tag=complete')
+    expect(tagLink(vod(['compilation', 'complete']), 'complete')).toBe('/playthroughs?tag=complete')
     expect(tagLink(vod([]), 'new')).toBe('/vods?tag=new')
     expect(tagLink(vod(['complete']), 'complete')).toBeNull()
   })
@@ -92,14 +93,14 @@ describe('toApiFilter', () => {
   })
 
   it('omits empty filters', () => {
-    expect(toApiFilter(parseListQuery({ tab: 'playthroughs' })).tag).toBe('compilation')
+    expect(toApiFilter(parseListQuery({}, 'playthroughs')).tag).toBe('compilation')
     expect(toApiFilter(parseListQuery({}))).toEqual({ tag: undefined, title: undefined, game: undefined, from: undefined, to: undefined })
   })
 })
 
 describe('hasFilters', () => {
   it('ignores the page and the tab', () => {
-    expect(hasFilters(parseListQuery({ page: '4', tab: 'playthroughs' }))).toBe(false)
+    expect(hasFilters(parseListQuery({ page: '4' }, 'playthroughs'))).toBe(false)
     expect(hasFilters(parseListQuery({ game: 'A' }))).toBe(true)
   })
 })

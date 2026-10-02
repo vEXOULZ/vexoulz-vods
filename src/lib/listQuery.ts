@@ -1,20 +1,24 @@
-// The list page keeps its filters in the URL so a link reproduces the view: ?tab=&tag=&title=&game=&from=&to=&page=
+// The list pages keep their filters in the URL so a link reproduces the view: /vods or /playthroughs (the tab), then
+// ?tag=&title=&game=&from=&to=&page=
 import type { Vod, VodListOptions } from '@vexoulz/vods-core'
 import { DATE_TAGS, RECENT_MS, TAG_NAME, tagStyle } from './vodTags'
 
 /**
- * The list's tabs, one per VOD tag the site knows. Plain VODs (no tags) first; a tag the site doesn't know yet has no
- * tab, so its VODs stay out of every list until one is added here.
+ * The lists, one per VOD tag the site knows, each its own page. Plain VODs (no tags) first; a tag the site doesn't know
+ * yet has no list, so its VODs stay out of every list until one is added here.
  */
 export const TABS = [
-  { value: 'vods', label: 'VODs', tag: undefined },
-  { value: 'playthroughs', label: 'Playthroughs', tag: 'compilation' },
+  { value: 'vods', label: 'VODs', tag: undefined, path: '/vods' },
+  { value: 'playthroughs', label: 'Playthroughs', tag: 'compilation', path: '/playthroughs' },
 ] as const
 
 /** How a VOD tag reads (`site.tags`). */
 export const tagLabel = (tag: string) => tagStyle(tag).label
 
 export type Tab = (typeof TABS)[number]['value']
+
+/** The page that lists `tab`. */
+export const listPath = (tab: Tab): string => TABS.find((t) => t.value === tab)!.path
 
 /** The tab a VOD is listed in: the first whose tag it has, else the plain VODs. */
 export const tabOf = (vod: Vod): Tab => TABS.find((t) => t.tag && vod.tags.includes(t.tag))?.value ?? 'vods'
@@ -46,15 +50,15 @@ type Query = Record<string, string | null | (string | null)[] | undefined>
 const first = (v: Query[string]): string => (Array.isArray(v) ? (v[0] ?? '') : (v ?? '')).trim()
 const isDay = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00`))
 
-export function parseListQuery(q: Query): ListState {
+/** The list's state from its query; the tab is the page's (listPath), not part of the query. */
+export function parseListQuery(q: Query, tab: Tab = 'vods'): ListState {
   const page = Number.parseInt(first(q.page), 10)
   const from = first(q.from)
   const to = first(q.to)
-  const tabValue = TABS.find((t) => t.value === first(q.tab))?.value ?? 'vods'
   const tag = first(q.tag)
   return {
-    tab: tabValue,
-    tag: tagFilters(tabValue, tag) ? tag : '',
+    tab,
+    tag: tagFilters(tab, tag) ? tag : '',
     page: Number.isFinite(page) && page > 0 ? page : 1,
     title: first(q.title).slice(0, 200),
     game: first(q.game).slice(0, 200),
@@ -63,10 +67,9 @@ export function parseListQuery(q: Query): ListState {
   }
 }
 
-/** Query object with defaults left out, so the plain list is just `/vods`. */
+/** Query object with defaults left out, so the plain list is just its page (the tab is in the path: listPath). */
 export function toListQuery(s: ListState): Record<string, string> {
   const q: Record<string, string> = {}
-  if (s.tab !== 'vods') q.tab = s.tab
   if (s.tag) q.tag = s.tag
   if (s.title) q.title = s.title
   if (s.game) q.game = s.game
@@ -99,13 +102,13 @@ export function toApiFilter(s: ListState, now = Math.floor(Date.now() / 60_000) 
   }
 }
 
-/** Any filter on, the tab aside (a tab isn't a filter: "All" keeps it). */
+/** Any filter on (the tab is the page, not a filter: "All" keeps it). */
 export const hasFilters = (s: ListState) => !!(s.tag || s.title || s.game || s.from || s.to)
 
 /** The list narrowed to `tag`, in the tab `vod` is listed in; null if that tab can't be. */
 export function tagLink(vod: Vod, tag: string): string | null {
   const tab = tabOf(vod)
   if (!tagFilters(tab, tag)) return null
-  return `/vods?${new URLSearchParams(toListQuery({ ...parseListQuery({}), tab, tag }))}`
+  return `${listPath(tab)}?${new URLSearchParams(toListQuery({ ...parseListQuery({}, tab), tag }))}`
 }
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // The newest VOD, above the list: a big thumbnail, when it was streamed and for how long, how many parts it was
 // uploaded in, and every chapter with its game, start and length (each a link to that point). Resumes where you
-// stopped, if you did. "See all VODs" asks the page to open the VODs tab and scroll to the list.
+// stopped, if you did. "See all VODs" goes to the VODs page.
 import { gamePalette, learnGameColors, VxButton, VxChapterBar, VxChip, VxLink, VxPlaceholder, VxPosters } from '@vexoulz/ui'
 import { boxArt, isFinished, toClock, watchPath, type Progress, type Vod } from '@vexoulz/vods-core'
 import { computed, watchEffect } from 'vue'
@@ -12,7 +12,6 @@ import { gamesWithArt } from '@/lib/art'
 import { relativeDay } from '@/lib/dates'
 
 const props = defineProps<{ vod: Vod; progress?: Progress | null }>()
-const emit = defineEmits<{ all: [] }>()
 
 const palette = computed(() => gamePalette(props.vod.chapters.map((c) => c.name)))
 const games = computed(() => gamesWithArt(props.vod.chapters).map((g) => ({ ...g, color: palette.value.get(g.name) })))
@@ -83,7 +82,7 @@ const { src: thumb, srcset: thumbSet, onLoad: thumbLoaded, onError: thumbFailed 
             {{ progress ? (grown ? `▶ Watch what's new (${toClock(progress.t)})` : `▶ Resume at ${toClock(progress.t)}`) : '▶ Watch' }}
           </VxLink>
           <VxLink v-if="progress" :to="watchPath(vod, 0)" class="vx-btn">From the start</VxLink>
-          <SeeAllButton class="all" @click="emit('all')">See all VODs</SeeAllButton>
+          <SeeAllButton to="/vods" class="all">See all VODs</SeeAllButton>
         </div>
       </div>
     </div>
