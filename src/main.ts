@@ -15,6 +15,7 @@ import App from './App.vue'
 import { answerOf, recall, remember, shouldCheck } from './admin/quiet'
 import { ensure, quietLoginUrl, session, setExpiredHandler, twitchLoginUrl } from './admin/session'
 import { account } from './lib/account'
+import { loadTagConfig } from './lib/vodTags'
 import { vodsConfig } from './vods.config'
 
 const WatchPage = () => import('./pages/WatchPage.vue')
@@ -41,6 +42,7 @@ const router = createRouter({
     { path: '/manage/synthetic/:id', component: () => import('./pages/admin/AdminSyntheticPage.vue'), props: true },
     { path: '/manage/storage', component: () => import('./pages/admin/AdminStoragePage.vue') },
     { path: '/manage/settings', component: () => import('./pages/admin/AdminSettingsPage.vue') },
+    { path: '/manage/tags', component: () => import('./pages/admin/AdminTagsPage.vue') },
     { path: '/manage/audit', component: () => import('./pages/admin/AdminAuditPage.vue') },
     // The old admin URLs, for bookmarks and the worker's sign-in errors (it sends those to /admin/login).
     { path: '/admin/:rest(.*)*', redirect: (to) => ({ path: `/manage${to.path.slice('/admin'.length)}`, query: to.query, hash: to.hash }) },
@@ -107,6 +109,9 @@ const progress = new AccountProgressStore({ signedIn: () => !!account.user.value
 watch(account.user, (user, before) => {
   if (user && !before) void progress.merge()
 })
+
+// How tags show (/manage/tags); the built-in ones until it answers.
+void loadTagConfig()
 
 createApp(App)
   .use(router)

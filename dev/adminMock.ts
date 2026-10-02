@@ -2,7 +2,7 @@
 // archive. Fake data, in memory; jobs advance on their own. Password: "admin"; "Sign in with Twitch" signs in a fake
 // Twitch admin at once (no vexoulz-auth). Never part of a build.
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import type { Plugin } from 'vite'
 
 type State = 'queued' | 'running' | 'paused' | 'done' | 'failed' | 'cancelled'
@@ -165,9 +165,13 @@ const sessionJson = (s: ReturnType<typeof sessionOf>) => ({
   passwordLogin: true, twitchLogin: true, user: s?.user ?? null,
 })
 
+/** The body as sent, for routes that don't take JSON (a tag's SVG). */
+const rawBodies = new WeakMap<IncomingMessage, string>()
 async function body(req: IncomingMessage): Promise<Record<string, unknown>> {
   let raw = ''
   for await (const chunk of req) raw += chunk
+  rawBodies.set(req, raw)
+  if (!/json/.test(req.headers['content-type'] ?? 'json')) return {}
   try {
     return raw ? JSON.parse(raw) : {}
   } catch {
@@ -518,6 +522,58 @@ function checkSetting(key: string, v: unknown): string | null {
   return null
 }
 
+// ---- site tags (docs/admin-api.md, "Site tags"); MOCK_SITE_TAGS=no answers 404, like an archive without them ----
+interface SiteTag { name: string; label: string; drawn: boolean; color: string | null; width: number | null; height: number | null }
+let siteTags: SiteTag[] = [
+  { name: 'new', label: 'new', drawn: true, color: 'var(--vx-accent)', width: null, height: null },
+  { name: 'updated', label: 'updated', drawn: true, color: 'var(--vx-info)', width: null, height: null },
+  { name: 'complete', label: 'complete', drawn: true, color: 'var(--vx-ok)', width: null, height: null },
+  { name: 'compilation', label: 'playthrough', drawn: false, color: null, width: null, height: null },
+]
+/** Cleaned SVGs by tag name, with the hash that versions their URL. */
+const tagShapes = new Map<string, { svg: string; v: string }>()
+let tagsChanged: { at: string; by: string } | null = null
+const siteTagsOff = () => process.env.MOCK_SITE_TAGS === 'no'
+const siteTagsJson = (admin: boolean) => ({
+  tags: siteTags.map((t) => {
+    const sh = tagShapes.get(t.name)
+    return { ...t, shape: sh ? `v1/site/tags/${t.name}.svg?v=${sh.v}` : null }
+  }),
+  ...(admin ? { updatedAt: tagsChanged?.at ?? null, updatedBy: tagsChanged?.by ?? null } : {}),
+})
+const TAG_NAME = /^[a-z0-9][a-z0-9-]{0,31}$/
+const TAG_COLOR = /^(#[0-9a-f]{3,8}|var\(--vx-[a-z0-9-]+\)|[a-z]{3,20}|(rgba?|hsla?|oklch)\([0-9.,%\s/a-z-]{1,60}\))$/i
+function checkTags(list: unknown): SiteTag[] | string {
+  if (!Array.isArray(list) || list.length > 32) return 'tags must be a list of at most 32'
+  const seen = new Set<string>()
+  const out: SiteTag[] = []
+  for (const t of list as Json[]) {
+    if (!t || typeof t.name !== 'string' || !TAG_NAME.test(t.name)) return `Bad tag name ${JSON.stringify(t?.name)}`
+    if (seen.has(t.name)) return `${t.name} is listed twice`
+    seen.add(t.name)
+    if (typeof t.label !== 'string' || !t.label.trim() || t.label.length > 40) return `${t.name}: label must be 1–40 characters`
+    if (typeof t.drawn !== 'boolean') return `${t.name}: drawn must be true or false`
+    if (t.color != null && (typeof t.color !== 'string' || !TAG_COLOR.test(t.color))) return `${t.name}: not a color the site takes`
+    for (const k of ['width', 'height'] as const) {
+      if (t[k] != null && !(Number.isInteger(t[k]) && t[k] >= 8 && t[k] <= 200)) return `${t.name}: ${k} must be 8–200`
+    }
+    out.push({ name: t.name, label: t.label.trim(), drawn: t.drawn, color: t.color ?? null, width: t.width ?? null, height: t.height ?? null })
+  }
+  const gone = ['new', 'updated', 'compilation'].find((name) => !seen.has(name))
+  if (gone) return `${gone} is set automatically and can't be removed`
+  return out
+}
+/**
+ * A rough stand-in for the archive's SVG cleaning: refuses what that would strip (scripts, handlers, outside
+ * references, entities, embedded images). The archive parses it and keeps an allow-list instead; see the contract.
+ */
+function cleanSvg(svg: string): string | null {
+  const t = svg.trim()
+  if (!/^(<\?xml[^>]*>\s*)?<svg[\s>]/i.test(t) || !/<\/svg>\s*$/i.test(t)) return null
+  if (/<!(DOCTYPE|ENTITY)|<script|<foreignObject|<iframe|<image|\son\w+\s*=|javascript:|(?:xlink:)?href\s*=\s*["'](?!#)|url\(\s*["']?(?!#)|@import/i.test(t)) return null
+  return t
+}
+
 // ---- storage: made-up folders under vods/ and live/ ----
 interface Folder { area: 'vods' | 'live'; name: string; bytes: number; files: number; ageH: number }
 const GB = 1024 ** 3
@@ -562,6 +618,18 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
       server.httpServer?.on('close', () => clearInterval(timer))
       // The public API reads the same rows: VODs a mock merge or split changed answer from here.
       server.middlewares.use('/backend', (req, res, next) => {
+        const tagsPath = (req.url ?? '').split('?')[0]!
+        if (tagsPath === '/v1/site/tags' && !siteTagsOff()) return send(res, 200, siteTagsJson(false))
+        const shm = /^\/v1\/site\/tags\/([a-z0-9-]+)\.svg$/.exec(tagsPath)
+        if (shm && !siteTagsOff()) {
+          const sh = tagShapes.get(shm[1]!)
+          if (!sh) return send(res, 404, { name: 'NotFound', message: 'No shape', code: 404 })
+          res.writeHead(200, {
+            'content-type': 'image/svg+xml', 'x-content-type-options': 'nosniff', 'cache-control': 'public, max-age=31536000, immutable',
+            'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+          })
+          return res.end(sh.svg)
+        }
         const pm = /^\/vods\/([^/?]+)(?:\?.*)?$/.exec(req.url ?? '')
         const id = pm ? decodeURIComponent(pm[1]!) : ''
         if (pm && hidden.has(id)) return send(res, 404, { name: 'NotFound', message: 'No record found', code: 404 })
@@ -746,6 +814,39 @@ export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vex
           if (!SETTINGS.some((x) => x.key === setm[1])) return fail(res, 404, `No setting ${setm[1]}`)
           overrides.delete(setm[1]!)
           return send(res, 200, { data: settingsJson() })
+        }
+
+        // ---- site tags ----
+        if (path.startsWith('/admin/site/tags') && siteTagsOff()) return fail(res, 404, 'Not found')
+        const by = s.user ? `twitch:${s.user.id}` : 'password'
+        if (path === '/admin/site/tags' && method === 'GET') return send(res, 200, siteTagsJson(true))
+        if (path === '/admin/site/tags' && method === 'PUT') {
+          const list = checkTags(b.tags)
+          if (typeof list === 'string') return fail(res, 400, list)
+          for (const name of tagShapes.keys()) if (!list.some((t) => t.name === name)) tagShapes.delete(name)
+          siteTags = list
+          tagsChanged = { at: iso(), by }
+          return send(res, 200, siteTagsJson(true))
+        }
+        const tsm = /^\/admin\/site\/tags\/([^/]+)\/shape$/.exec(path)
+        if (tsm) {
+          const name = decodeURIComponent(tsm[1]!)
+          if (!siteTags.some((t) => t.name === name)) return fail(res, 404, `No tag ${name}`)
+          if (method === 'PUT') {
+            if (!/^image\/svg\+xml\b/.test(req.headers['content-type'] ?? '')) return fail(res, 415, 'Send the SVG as image/svg+xml')
+            const raw = rawBodies.get(req) ?? ''
+            if (Buffer.byteLength(raw) > 64 * 1024) return fail(res, 413, 'Over 64 KB')
+            const svg = cleanSvg(raw)
+            if (!svg) return fail(res, 400, 'Not an SVG the site can use (scripts, outside references and embedded images are refused)')
+            tagShapes.set(name, { svg, v: createHash('sha256').update(svg).digest('hex').slice(0, 12) })
+            tagsChanged = { at: iso(), by }
+            return send(res, 200, siteTagsJson(true))
+          }
+          if (method === 'DELETE') {
+            tagShapes.delete(name)
+            tagsChanged = { at: iso(), by }
+            return send(res, 200, siteTagsJson(true))
+          }
         }
 
         // ---- storage ----

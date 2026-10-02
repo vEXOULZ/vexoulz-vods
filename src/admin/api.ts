@@ -1,4 +1,5 @@
 import type { RawDrive, RawEmoteSets, RawVod } from '@vexoulz/vods-core'
+import type { RawTag } from '@/lib/vodTags'
 
 // Client for twitch-archive's worker admin API, as described in docs/admin-api.md. The browser holds no key: a
 // password login gives it an HttpOnly session cookie, and every change carries the session's CSRF token.
@@ -108,6 +109,15 @@ export interface GameRow {
   video_provider?: string | null
   video_id?: string | null
 }
+
+/** GET /admin/site/tags: how each VOD tag shows on the site, in order (docs/admin-api.md, "Site tags"). */
+export interface SiteTags {
+  tags: RawTag[]
+  updatedAt: string | null
+  updatedBy: string | null
+}
+/** A tag as PUT /admin/site/tags takes it: everything but the shape, which is uploaded on its own. */
+export type TagInput = Omit<RawTag, 'shape'>
 
 export type SettingType = 'bool' | 'int' | 'float' | 'text' | 'list' | 'steps'
 export type SettingValue = boolean | number | string | string[] | Record<string, string[]>
@@ -366,12 +376,14 @@ export class AdminClient {
 
   private async request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
     const headers: Record<string, string> = { accept: 'application/json' }
-    if (body !== undefined) headers['content-type'] = 'application/json'
+    // A Blob (an uploaded file) goes as it is, with its own type; anything else as JSON.
+    const raw = body instanceof Blob
+    if (body !== undefined) headers['content-type'] = raw ? body.type || 'application/octet-stream' : 'application/json'
     if (method !== 'GET' && this.csrf) headers['x-csrf-token'] = this.csrf
     const res = await this.fetcher(`${this.base}${path}`, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : raw ? body : JSON.stringify(body),
       credentials: 'same-origin',
       signal,
     })
@@ -558,6 +570,22 @@ export class AdminClient {
   }
   resetSetting(key: string): Promise<{ data: RuntimeSetting[] }> {
     return this.request('DELETE', `/admin/settings/${enc(key)}`)
+  }
+  // ---- site tags ----
+  siteTags(signal?: AbortSignal): Promise<SiteTags> {
+    return this.request('GET', '/admin/site/tags', undefined, signal)
+  }
+  /** Replaces the whole list (all or nothing); a tag left out loses its shape too. */
+  saveSiteTags(tags: TagInput[]): Promise<SiteTags> {
+    return this.request('PUT', '/admin/site/tags', { tags })
+  }
+  /** The tag's vector shape: an SVG, which the archive cleans before keeping. The tag has to be saved first. */
+  uploadTagShape(name: string, svg: Blob): Promise<SiteTags> {
+    return this.request('PUT', `/admin/site/tags/${enc(name)}/shape`, svg.type ? svg : new Blob([svg], { type: 'image/svg+xml' }))
+  }
+  /** Back to the placeholder. */
+  deleteTagShape(name: string): Promise<SiteTags> {
+    return this.request('DELETE', `/admin/site/tags/${enc(name)}/shape`)
   }
   storage(refresh = false, signal?: AbortSignal): Promise<StorageView> {
     return this.request('GET', `/admin/storage${refresh ? '?refresh=true' : ''}`, undefined, signal)

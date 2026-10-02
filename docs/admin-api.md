@@ -9,7 +9,7 @@ Conventions (as the worker does today): JSON bodies; errors are `{"error": true,
 status; action responses are `{"error": false, "msg": "...", "jobId"?: n}`; job objects are the worker's `_job_json`
 shape. Times are ISO 8601 UTC.
 
-All of it is implemented in twitch-archive (worker admin API, from PR #12); the "new" labels below record what
+All of it but §6 (site tags, requested) is implemented in twitch-archive (worker admin API, from PR #12); the "new" labels below record what
 that PR added. Differences from the first draft: a missing or expired session is `403` (not `401`), and audit
 entries also carry `id` (the `before` cursor). The dev mock (`dev/adminMock.ts`) follows the same contract.
 
@@ -169,3 +169,49 @@ Every state-changing admin request is recorded: `{at, actor: "password" | "api-k
 shape: `actor_kind`, `actor_id`, `actor_login`, `via`, dotted `action`s, `outcome`, `before`/`after`/`detail`, ISO `at`).
 It lists every actor, the worker's own jobs and refused requests too, where `/admin/audit` lists admins only. Same
 session cookie; errors there are problem details (`detail` is the message).
+
+## 6. Site tags — requested (not yet in twitch-archive)
+
+How each VOD tag shows on the site, edited on `/manage/tags`. Until the archive has these routes the site uses the
+built-in `site.tags` in `src/vods.config.ts` (the public GET answering 404 or failing means "none saved"), and
+`/manage/tags` shows those read-only. The dev mock implements all of it (`MOCK_SITE_TAGS=no` makes it answer 404).
+
+A tag: `{name, label, drawn, color, shape, width, height}`.
+
+- `name`: the VOD tag it styles, `^[a-z0-9][a-z0-9-]{0,31}$`, unique. `new` and `updated` come from the dates;
+  any other name matches a synthetic VOD's own tag (`complete`, `compilation`, …). `new`, `updated` and
+  `compilation` are **auto tags** (set by the site or the archive, not by an admin): every saved list must keep them,
+  though they can be restyled. Any other tag (`complete` included) can be added and removed freely.
+- `label`: 1–40 characters, shown on the chip or read out when drawn.
+- `drawn`: `true` hangs it off the thumbnail; `false` keeps it a chip by the date.
+- `color`: `null`, or a hex (`#rgb` to `#rrggbbaa`), `var(--vx-…)`, a color name (3–20 letters), or
+  `rgb()/rgba()/hsl()/hsla()/oklch()` with up to 60 characters of digits, `.,%/` spaces and letters inside. The site
+  checks it again before using it in CSS.
+- `shape`: `null` (a placeholder is drawn) or the uploaded SVG's path relative to the public API,
+  `v1/site/tags/{name}.svg?v=<content hash>`. Read-only here: set by the shape routes below.
+- `width`, `height`: `null` or a whole number of px, 8–200.
+
+Public (the archive API at `/backend`, no session, cacheable for a minute or so):
+
+- `GET /v1/site/tags` → `{"tags": [tag, ...]}` in display order; 404 (or `{"tags": null}`) while none were ever saved.
+- `GET /v1/site/tags/{name}.svg` → the sanitized SVG, `content-type: image/svg+xml`,
+  `content-security-policy: default-src 'none'; style-src 'unsafe-inline'; sandbox`,
+  `x-content-type-options: nosniff`, and (since the URL carries `?v=<hash>`) `cache-control: public, max-age=31536000,
+  immutable`. 404 if the tag has no shape.
+
+Admin (session + CSRF as everywhere else; every change audited with before and after):
+
+- `GET /admin/site/tags` → `{"tags": [tag, ...], "updatedAt", "updatedBy"}`; 404 while the feature isn't deployed
+  (the page then shows the built-in tags read-only). Never saved → `{"tags": [], "updatedAt": null, ...}` is fine too.
+- `PUT /admin/site/tags` `{"tags": [{name, label, drawn, color, width, height}, ...]}` → the same as the GET. Replaces
+  the whole list, in order, all or nothing: at most 32 tags, and all three auto tags present; a 400 `{error, msg}`
+  names the first refused tag and field (or the missing auto tag). `shape` in the body is ignored (shapes stay with their tag's name); a tag no longer listed loses its shape.
+- `PUT /admin/site/tags/{name}/shape` with the raw SVG as the body, `content-type: image/svg+xml` → the same as the
+  GET. 404 for a tag not in the saved list, 415 for another content type, 413 over 64 KB, 400 if the SVG isn't safe.
+  The archive must **parse** the SVG (not pattern-match it) and keep an allow-list of elements and attributes:
+  no `<script>`, `on*` handlers, `<foreignObject>`, `<iframe>`, `<image>`/embedded rasters, DOCTYPE or entities,
+  `href`/`xlink:href` other than `#fragment`, `url()` other than `url(#…)`, or `@import`. Store the cleaned file and
+  set `shape` to its versioned path.
+- `DELETE /admin/site/tags/{name}/shape` → the same as the GET, with that tag's `shape` back to `null`.
+
+The site draws a shape as a CSS mask filled with the tag's color, so only the SVG's outline (its alpha) matters.

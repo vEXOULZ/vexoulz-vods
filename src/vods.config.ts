@@ -35,7 +35,7 @@ export const site = {
   /**
    * VOD tags, by name. `new` and `updated` come from the VOD's dates (src/lib/vodTags.ts); the rest are tags set on
    * the VOD (`compilation` on a playthrough, `complete` from its manage page). A tag not listed is a chip with its
-   * own name.
+   * own name. These are the defaults: once the archive has tags edited on /manage/tags, the site uses those.
    */
   tags: {
     new: { label: 'new', drawn: true, color: 'var(--vx-accent)', shape: null },
