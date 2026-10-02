@@ -60,6 +60,15 @@ describe('tagChanges', () => {
       { name: 'compilation', label: 'playthrough', drawn: false, color: '#abcdef', width: null, height: null },
     ])
   })
+  it('takes sizes as the number inputs give them', () => {
+    const drafts = saved.map((t) => draftOf(t))
+    drafts[0]!.height = 32
+    drafts[1]!.width = 7
+    const r = tagChanges(saved, drafts)
+    expect(r.body[0]!.height).toBe(32)
+    expect(r.errors.get(drafts[1]!.key)).toEqual({ width: expect.any(String) })
+    expect(previewOf(drafts[0]!, '/backend').height).toBe(32)
+  })
   it('flags bad fields by draft', () => {
     const a = blankDraft()
     const b = Object.assign(blankDraft(), { name: 'new', label: 'x', color: 'url(x)', width: '7', height: '20.5' })
