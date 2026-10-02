@@ -170,14 +170,15 @@ shape: `actor_kind`, `actor_id`, `actor_login`, `via`, dotted `action`s, `outcom
 It lists every actor, the worker's own jobs and refused requests too, where `/admin/audit` lists admins only. Same
 session cookie; errors there are problem details (`detail` is the message).
 
-## 6. Site tags — in twitch-archive; the text fields are requested
+## 6. Site tags — in twitch-archive; the text and pattern fields are requested
 
 How each VOD tag shows on the site, edited on `/manage/tags`. Until the archive has these routes the site uses the
 built-in `site.tags` in `src/vods.config.ts` (the public GET answering 404 or failing means "none saved"), and
 `/manage/tags` shows those read-only. The dev mock implements all of it (`MOCK_SITE_TAGS=no` makes it answer 404).
 
-A tag: `{name, label, drawn, color, shape, width, height, text, textColor, textSize, textX, textY}`. The five text
-fields are newer than the rest: until the archive keeps them, it may leave them out (the site reads them as `null`).
+A tag: `{name, label, drawn, color, shape, width, height, text, textColor, textSize, textX, textY, pattern,
+patternColor, patternSize}`. The text and pattern fields are newer than the rest: until the archive keeps them, it may
+leave them out (the site reads them as `null`).
 
 - `name`: the VOD tag it styles, `^[a-z0-9][a-z0-9-]{0,31}$`, unique. `new` and `updated` come from the dates;
   any other name matches a synthetic VOD's own tag (`complete`, `compilation`, …). `new`, `updated` and
@@ -196,6 +197,10 @@ fields are newer than the rest: until the archive keeps them, it may leave them 
 - `textSize`: `null` (half the tag's height) or a whole number of px, 6–48.
 - `textX`, `textY`: `null` or a whole number of px, −100 to 100, nudging the text from the middle (+ is right, down).
   With `text` `null` the other four are `null` too (the archive may store them as sent or drop them).
+- `pattern`: `null` (plain), `"stripes"` (diagonal) or `"checks"`, over the parts drawn in the tag's color.
+- `patternColor`: `null` (the page background) or a color, as `color`: the pattern's second color.
+- `patternSize`: `null` (4) or a whole number of px, 2–40: one stripe's or square's width.
+  With `pattern` `null` the other two are `null` too.
 
 Public (the archive API at `/backend`, no session, cacheable for a minute or so):
 
@@ -209,7 +214,7 @@ Admin (session + CSRF as everywhere else; every change audited with before and a
 
 - `GET /admin/site/tags` → `{"tags": [tag, ...], "updatedAt", "updatedBy"}`; 404 while the feature isn't deployed
   (the page then shows the built-in tags read-only). Never saved → `{"tags": [], "updatedAt": null, ...}` is fine too.
-- `PUT /admin/site/tags` `{"tags": [{name, label, drawn, color, width, height, text, textColor, textSize, textX, textY}, ...]}` → the same as the GET. Replaces
+- `PUT /admin/site/tags` `{"tags": [{name, label, drawn, color, width, height, text, textColor, textSize, textX, textY, pattern, patternColor, patternSize}, ...]}` → the same as the GET. Replaces
   the whole list, in order, all or nothing: at most 32 tags, and all three auto tags present; a 400 `{error, msg}`
   names the first refused tag and field (or the missing auto tag). `shape` in the body is ignored (shapes stay with their tag's name); a tag no longer listed loses its shape.
 - `PUT /admin/site/tags/{name}/shape` with the raw SVG as the body, `content-type: image/svg+xml` → the same as the
@@ -222,4 +227,4 @@ Admin (session + CSRF as everywhere else; every change audited with before and a
 
 The site draws the SVG in its own colors, except the parts meant to follow the tag: those drawn in `currentColor`,
 or, in an SVG that never uses `currentColor`, the black ones (`#000`, `black`, `rgb(0,0,0)`, or no fill at all) take
-the tag's color. The archive's cleaning must keep `currentColor` and the file's other colors as they are.
+the tag's color (or its pattern: fills and strokes only). The archive's cleaning must keep `currentColor` and the file's other colors as they are.

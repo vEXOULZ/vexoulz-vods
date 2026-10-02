@@ -34,6 +34,19 @@ describe('tintSvg', () => {
     const root = parse(tintSvg('<svg xmlns="http://www.w3.org/2000/svg" fill="#0f0"><path/></svg>', RED)!)
     expect(root.getAttribute('fill')).toBe('#0f0')
   })
+  it('fills the tag-colored parts with a pattern, sized in px', () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 124 44"><path fill="currentColor"/><path style="stroke:currentColor"/><stop stop-color="currentColor"/></svg>'
+    const root = parse(tintSvg(svg, RED, { kind: 'checks', color: '#fff', size: 4, box: { w: 62, h: 22 } })!)
+    const pat = root.querySelector('defs > pattern#vx-tag-pattern')!
+    expect(pat.getAttribute('width')).toBe('16') // 2 squares of 4px, at 2 units per px
+    expect([...pat.querySelectorAll('rect')].map((r) => r.getAttribute('fill'))).toEqual([RED, '#fff', '#fff'])
+    expect(root.querySelector('path')!.getAttribute('fill')).toBe('url(#vx-tag-pattern)')
+    expect(root.querySelectorAll('path')[1]!.getAttribute('style')).toBe('stroke:url(#vx-tag-pattern)')
+    expect(root.querySelector('stop')!.getAttribute('stop-color')).toBe('currentColor')
+    const striped = parse(tintSvg('<svg xmlns="http://www.w3.org/2000/svg"><path/></svg>', RED, { kind: 'stripes', color: '#fff', size: 3, box: { w: 62, h: 22 } })!)
+    expect(striped.getAttribute('fill')).toBe('url(#vx-tag-pattern)')
+    expect(striped.querySelector('pattern')!.getAttribute('patternTransform')).toBe('rotate(45)')
+  })
   it('refuses what is not an SVG', () => {
     expect(tintSvg('<html/>', RED)).toBeNull()
     expect(tintSvg('<svg', RED)).toBeNull()

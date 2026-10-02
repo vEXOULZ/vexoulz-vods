@@ -35,6 +35,12 @@ export interface TagStyle {
   /** Moves the text from the tag's middle, in px (e.g. off a tag's hole). */
   textX?: number
   textY?: number
+  /** A pattern over the tag-colored parts: diagonal stripes or checks of `color` and `patternColor`. Unset: plain. */
+  pattern?: 'stripes' | 'checks'
+  /** The pattern's second color (any CSS color) and the width of one stripe or square in px. Unset: the page
+   * background's color, and 4. */
+  patternColor?: string
+  patternSize?: number
 }
 
 export const site = {

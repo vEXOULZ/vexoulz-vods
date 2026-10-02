@@ -2,15 +2,16 @@
 // /manage/tags: how each VOD tag shows on the site (GET /admin/site/tags): its label, whether it hangs off the
 // thumbnail or is a chip, its color and size, and its vector shape. One Save sends the whole list, all or none;
 // a shape uploads (or goes back to the placeholder) on its own, straight away, for a tag that's saved.
-import { timeAgo, VxButton, VxCallout, VxChip, VxField, VxInput, VxSkeleton, VxSwitch, useToast } from '@vexoulz/ui'
+import { timeAgo, VxButton, VxCallout, VxChip, VxField, VxInput, VxSelect, VxSkeleton, VxSwitch, useToast, type Option } from '@vexoulz/ui'
 import { computed, onMounted, ref } from 'vue'
 import { AdminApiError, type SiteTags } from '@/admin/api'
 import ManageShell from '@/admin/ManageShell.vue'
+import TagColorInput from '@/admin/TagColorInput.vue'
 import { admin } from '@/admin/session'
 import { blankDraft, draftsOf, previewOf, rawOf, tagChanges, type TagDraft, type TagField } from '@/admin/tags'
 import TagMark from '@/components/TagMark.vue'
 import { errorMessage } from '@/lib/errors'
-import { loadTagConfig, TAG_SIZE, TAG_TEXT_MAX, TAG_TEXT_NUDGE, TAG_TEXT_SIZE } from '@/lib/vodTags'
+import { loadTagConfig, TAG_PATTERN_SIZE, TAG_SIZE, TAG_TEXT_MAX, TAG_TEXT_NUDGE, TAG_TEXT_SIZE, type TagPattern } from '@/lib/vodTags'
 import { site, vodsConfig } from '@/vods.config'
 
 const toast = useToast()
@@ -22,6 +23,11 @@ const ABOUT: Record<string, string> = {
 }
 const SWATCHES = ['accent', 'info', 'ok', 'warn', 'bad', 'ink', 'muted'].map((t) => `var(--vx-${t})`)
 const TEXT_SWATCHES = ['bg', 'ink', ...['accent', 'info', 'ok', 'warn', 'bad']].map((t) => `var(--vx-${t})`)
+const PATTERNS: Option<TagPattern | ''>[] = [
+  { value: '', label: 'Plain' },
+  { value: 'stripes', label: 'Stripes' },
+  { value: 'checks', label: 'Checks' },
+]
 const MAX_SVG = 64 * 1024
 
 const data = ref<SiteTags | null>(null)
@@ -121,8 +127,6 @@ async function dropShape(d: TagDraft) {
     shaping.value = null
   }
 }
-/** The picker only takes #rrggbb; for anything else it starts from black. */
-const pickerValue = (c: string) => (/^#[0-9a-f]{6}$/i.test(c.trim()) ? c.trim() : '#000000')
 
 onMounted(() => {
   document.title = 'Tags · Manage · vods.vexoulz.net'
@@ -171,23 +175,7 @@ onMounted(() => {
           </VxField>
           <VxField label="Color" :error="err(d, 'color')" help="Empty: the default look.">
             <template #default="{ id }">
-              <div class="color">
-                <input type="color" class="picker" :value="pickerValue(d.color)" :aria-label="`Pick a color for ${d.name || 'the tag'}`" @input="d.color = ($event.target as HTMLInputElement).value" />
-                <VxInput :id="id" v-model="d.color" mono :invalid="!!err(d, 'color')" placeholder="var(--vx-accent)" />
-              </div>
-              <div class="swatches">
-                <button
-                  v-for="s in SWATCHES"
-                  :key="s"
-                  type="button"
-                  class="swatch"
-                  :style="{ background: s }"
-                  :aria-pressed="d.color === s"
-                  :title="s"
-                  :aria-label="s"
-                  @click="d.color = s"
-                ></button>
-              </div>
+              <TagColorInput :id="id" v-model="d.color" :swatches="SWATCHES" :invalid="!!err(d, 'color')" placeholder="var(--vx-accent)" :pick-label="`Pick a color for ${d.name || 'the tag'}`" />
             </template>
           </VxField>
           <div class="drawn">
@@ -212,6 +200,21 @@ onMounted(() => {
               </template>
               <span v-else-if="!unavailable" class="vx-muted note">Save the tag first.</span>
             </div>
+            <VxField label="Pattern" help="Over the parts in the tag's color.">
+              <template #default="{ id }">
+                <VxSelect :id="id" :model-value="d.pattern" :options="PATTERNS" width="100%" @update:model-value="d.pattern = $event ?? ''" />
+              </template>
+            </VxField>
+            <template v-if="d.pattern">
+              <VxField label="Pattern color" :error="err(d, 'patternColor')" help="Empty: the page background.">
+                <template #default="{ id }">
+                  <TagColorInput :id="id" v-model="d.patternColor" :swatches="TEXT_SWATCHES" :invalid="!!err(d, 'patternColor')" placeholder="var(--vx-bg)" :pick-label="`Pick a pattern color for ${d.name || 'the tag'}`" />
+                </template>
+              </VxField>
+              <VxField label="Pattern size" :error="err(d, 'patternSize')" :help="`px per stripe or square, ${TAG_PATTERN_SIZE.min}–${TAG_PATTERN_SIZE.max}; empty: 4`">
+                <template #default="{ id }"><VxInput :id="id" v-model="d.patternSize" type="number" mono :invalid="!!err(d, 'patternSize')" placeholder="4" /></template>
+              </VxField>
+            </template>
             <div class="drawn wide">
               <VxSwitch v-model="d.textOn" :label="'Text on the tag'" />
             </div>
@@ -221,23 +224,7 @@ onMounted(() => {
               </VxField>
               <VxField label="Text color" :error="err(d, 'textColor')" help="Empty: the page background.">
                 <template #default="{ id }">
-                  <div class="color">
-                    <input type="color" class="picker" :value="pickerValue(d.textColor)" :aria-label="`Pick a text color for ${d.name || 'the tag'}`" @input="d.textColor = ($event.target as HTMLInputElement).value" />
-                    <VxInput :id="id" v-model="d.textColor" mono :invalid="!!err(d, 'textColor')" placeholder="var(--vx-bg)" />
-                  </div>
-                  <div class="swatches">
-                    <button
-                      v-for="s in TEXT_SWATCHES"
-                      :key="s"
-                      type="button"
-                      class="swatch"
-                      :style="{ background: s }"
-                      :aria-pressed="d.textColor === s"
-                      :title="s"
-                      :aria-label="s"
-                      @click="d.textColor = s"
-                    ></button>
-                  </div>
+                  <TagColorInput :id="id" v-model="d.textColor" :swatches="TEXT_SWATCHES" :invalid="!!err(d, 'textColor')" placeholder="var(--vx-bg)" :pick-label="`Pick a text color for ${d.name || 'the tag'}`" />
                 </template>
               </VxField>
               <VxField label="Text size" :error="err(d, 'textSize')" :help="`px, ${TAG_TEXT_SIZE.min}–${TAG_TEXT_SIZE.max}; empty: half the height`">
@@ -290,11 +277,6 @@ onMounted(() => {
 }
 .mark { position: absolute; left: -5px; top: 16px; }
 .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px 14px; min-width: 0; }
-.color { display: flex; gap: 6px; align-items: center; }
-.picker { width: 34px; height: 30px; padding: 0; border: 1px solid var(--vx-line); border-radius: var(--vx-radius-sm); background: none; cursor: pointer; flex: none; }
-.swatches { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
-.swatch { width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--vx-line); cursor: pointer; padding: 0; }
-.swatch[aria-pressed='true'] { outline: 2px solid var(--vx-ink); outline-offset: 1px; }
 .drawn { display: flex; align-items: center; }
 .wide { grid-column: 1 / -1; }
 .shape { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; }

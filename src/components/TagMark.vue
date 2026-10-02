@@ -12,12 +12,16 @@ const w = computed(() => props.tag.width ?? 62)
 const h = computed(() => props.tag.height ?? 22)
 
 const root = ref<HTMLElement>()
+const probe = ref<HTMLElement>()
 const svg = ref<string | null>(null)
-/** The tag's color as the page resolves it (var() and the theme don't reach inside an <img>). */
+/** The tag's color and its pattern's, as the page resolves them (var() and the theme don't reach inside an <img>). */
 const resolved = ref('')
+const resolvedPattern = ref('')
 const resolve = () => {
   if (root.value) resolved.value = getComputedStyle(root.value).color
+  if (probe.value) resolvedPattern.value = getComputedStyle(probe.value).color
 }
+const patternSize = computed(() => props.tag.patternSize ?? 4)
 
 watch(
   () => props.tag.shape,
@@ -29,7 +33,7 @@ watch(
   },
   { immediate: true },
 )
-watch(() => props.tag.color, () => requestAnimationFrame(resolve))
+watch(() => [props.tag.color, props.tag.pattern, props.tag.patternColor], () => requestAnimationFrame(resolve))
 
 // The theme can change the tag's color (a var(--vx-…)), by the OS setting or the site's own switch.
 let dark: MediaQueryList | undefined
@@ -47,7 +51,11 @@ onBeforeUnmount(() => {
 })
 
 const src = computed(() => {
-  const tinted = svg.value && resolved.value ? tintSvg(svg.value, resolved.value) : null
+  const { pattern } = props.tag
+  const fill = pattern && resolvedPattern.value
+    ? { kind: pattern, color: resolvedPattern.value, size: patternSize.value, box: { w: w.value, h: h.value } }
+    : undefined
+  const tinted = svg.value && resolved.value ? tintSvg(svg.value, resolved.value, fill) : null
   return tinted ? svgDataUrl(tinted) : null
 })
 const textStyle = computed(() => ({
@@ -58,7 +66,13 @@ const textStyle = computed(() => ({
 </script>
 
 <template>
-  <span ref="root" class="tag-mark" :class="{ 'has-text': tag.text }" :style="{ '--tag-color': tag.color }">
+  <span
+    ref="root"
+    class="tag-mark"
+    :class="[{ 'has-text': tag.text }, tag.pattern && `is-${tag.pattern}`]"
+    :style="{ '--tag-color': tag.color, '--tag-pattern': tag.patternColor, '--tag-pattern-size': `${patternSize}px` }"
+  >
+    <span v-if="tag.pattern" ref="probe" class="probe" hidden></span>
     <img v-if="tag.shape && src" class="shape" :src="src" alt="" :width="w" :height="h" />
     <span v-else-if="tag.shape && svg !== null" class="shape" aria-hidden="true" :style="{ width: `${w}px`, height: `${h}px` }"></span>
     <span v-else class="ph" aria-hidden="true"><VxPlaceholder :label="tag.label" :w="w" :h="h" /></span>
@@ -75,6 +89,16 @@ const textStyle = computed(() => ({
 .shape { display: block; object-fit: contain; }
 /* The placeholder takes the tag's color, so the config shows before the image exists. */
 .ph { display: flex; border-radius: var(--vx-radius-sm); background: var(--tag-color, var(--vx-surface-2)); }
+/* The same patterns as lib/tagShape, for the placeholder. */
+.is-stripes .ph {
+  background: repeating-linear-gradient(45deg, var(--tag-color, var(--vx-surface-2)) 0 var(--tag-pattern-size),
+    var(--tag-pattern, var(--vx-bg)) 0 calc(2 * var(--tag-pattern-size)));
+}
+.is-checks .ph {
+  background: conic-gradient(var(--tag-pattern, var(--vx-bg)) 25%, var(--tag-color, var(--vx-surface-2)) 0 50%,
+    var(--tag-pattern, var(--vx-bg)) 0 75%, var(--tag-color, var(--vx-surface-2)) 0) 0 0 / calc(2 * var(--tag-pattern-size)) calc(2 * var(--tag-pattern-size));
+}
+.probe { color: var(--tag-pattern, var(--vx-bg)); }
 .ph :deep(.vx-ph) { font-size: 10px; color: var(--vx-bg); border-color: color-mix(in srgb, var(--vx-bg) 45%, transparent); }
 /* Its text takes the placeholder's place. */
 .has-text .ph :deep(.vx-ph) { color: transparent; }

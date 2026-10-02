@@ -51,6 +51,9 @@ export interface RawTag {
   textSize: number | null
   textX: number | null
   textY: number | null
+  pattern: TagPattern | null
+  patternColor: string | null
+  patternSize: number | null
 }
 
 export const TAG_NAME = /^[a-z0-9][a-z0-9-]{0,31}$/
@@ -61,6 +64,9 @@ export const TAG_LABEL_MAX = 40
 export const TAG_TEXT_MAX = 24
 export const TAG_TEXT_SIZE = { min: 6, max: 48 }
 export const TAG_TEXT_NUDGE = { min: -100, max: 100 }
+export const TAG_PATTERNS = ['stripes', 'checks'] as const
+export type TagPattern = (typeof TAG_PATTERNS)[number]
+export const TAG_PATTERN_SIZE = { min: 2, max: 40 }
 /** Tags the site or the archive sets by itself: always listed on /manage/tags, and can't be removed there. */
 export const AUTO_TAGS: readonly string[] = ['new', 'updated', 'compilation']
 export const isAutoTag = (name: string) => AUTO_TAGS.includes(name)
@@ -85,6 +91,11 @@ export function fromRaw(raw: RawTag[], apiBase: string): Record<string, TagStyle
       textSize: within(t.textSize, TAG_TEXT_SIZE),
       textX: within(t.textX, TAG_TEXT_NUDGE),
       textY: within(t.textY, TAG_TEXT_NUDGE),
+      ...(TAG_PATTERNS.includes(t.pattern as TagPattern) && {
+        pattern: t.pattern as TagPattern,
+        patternColor: color(t.patternColor),
+        patternSize: within(t.patternSize, TAG_PATTERN_SIZE),
+      }),
     }
   }
   return out

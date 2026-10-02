@@ -4,8 +4,9 @@ import { blankDraft, draftOf, draftsOf, previewOf, rawOf, tagChanges } from '@/a
 import { fromRaw, loadTagConfig, tagConfig, type RawTag } from '@/lib/vodTags'
 import { site } from '@/vods.config'
 
-const raw = (o: Partial<RawTag> = {}): RawTag => ({ name: 'new', label: 'new', drawn: true, color: null, shape: null, width: null, height: null, ...NO_TEXT, ...o })
+const raw = (o: Partial<RawTag> = {}): RawTag => ({ name: 'new', label: 'new', drawn: true, color: null, shape: null, width: null, height: null, ...NO_TEXT, ...NO_PATTERN, ...o })
 const NO_TEXT = { text: null, textColor: null, textSize: null, textX: null, textY: null }
+const NO_PATTERN = { pattern: null, patternColor: null, patternSize: null }
 const json = (status: number, body: unknown) => vi.fn(async (_u: string, _i?: RequestInit) => new Response(JSON.stringify(body), { status }))
 
 afterEach(() => {
@@ -68,8 +69,8 @@ describe('tagChanges', () => {
     const r = tagChanges(saved, drafts)
     expect(r.changed).toBe(true)
     expect(r.body).toEqual([
-      { name: 'new', label: 'new', drawn: true, color: 'var(--vx-accent)', width: 70, height: null, ...NO_TEXT },
-      { name: 'compilation', label: 'playthrough', drawn: false, color: '#abcdef', width: null, height: null, ...NO_TEXT },
+      { name: 'new', label: 'new', drawn: true, color: 'var(--vx-accent)', width: 70, height: null, ...NO_TEXT, ...NO_PATTERN },
+      { name: 'compilation', label: 'playthrough', drawn: false, color: '#abcdef', width: null, height: null, ...NO_TEXT, ...NO_PATTERN },
     ])
   })
   it('takes sizes as the number inputs give them', () => {
@@ -101,6 +102,23 @@ describe('tagChanges', () => {
     expect(previewOf(drafts[1]!, '').text).toBeUndefined()
     // Loaded back, the text is on again.
     expect(draftOf({ ...saved[0]!, ...r.body[0]!, shape: null })).toMatchObject({ textOn: true, text: '100%', textX: '-4' })
+  })
+  it('saves a pattern only while one is picked', () => {
+    const drafts = saved.map((t) => draftOf(t))
+    Object.assign(drafts[0]!, { pattern: 'checks', patternColor: ' #fff ', patternSize: 6 })
+    Object.assign(drafts[1]!, { pattern: '', patternColor: '#fff', patternSize: '99' })
+    const r = tagChanges(saved, drafts)
+    expect(r.errors.size).toBe(0)
+    expect(r.body[0]).toMatchObject({ pattern: 'checks', patternColor: '#fff', patternSize: 6 })
+    expect(r.body[1]).toMatchObject(NO_PATTERN)
+    expect(Object.keys(r.body[0]!)).toEqual(Object.keys(r.body[1]!))
+    expect(previewOf(drafts[0]!, '')).toMatchObject({ pattern: 'checks', patternColor: '#fff', patternSize: 6 })
+    expect(previewOf(drafts[1]!, '').pattern).toBeUndefined()
+    const bad = Object.assign(draftOf(saved[0]!), { pattern: 'stripes', patternColor: 'url(x)', patternSize: 1 })
+    expect(Object.keys(tagChanges(saved, [bad, drafts[1]!]).errors.get(bad.key)!)).toEqual(['patternColor', 'patternSize'])
+    const out = fromRaw([raw({ pattern: 'stripes', patternSize: 3 }), raw({ name: 'x', pattern: 'dots' as never, patternSize: 3 })], '')
+    expect(out.new).toMatchObject({ pattern: 'stripes', patternSize: 3 })
+    expect([out.x!.pattern, out.x!.patternSize]).toEqual([undefined, undefined])
   })
   it('flags bad text fields', () => {
     const d = Object.assign(draftOf(saved[0]!), { textOn: true, text: ' ', textColor: 'url(x)', textSize: 5, textX: 101, textY: '1.5' })
