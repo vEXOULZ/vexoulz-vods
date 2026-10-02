@@ -11,8 +11,9 @@ export interface TagDraft {
   label: string
   drawn: boolean
   color: string
-  width: string
-  height: string
+  /** As typed: the number inputs' v-model hands back a number once something is typed, '' when empty. */
+  width: string | number
+  height: string | number
   /** The shape as saved (a path under the public API); uploads and removals apply straight away. */
   shape: string | null
   /** Saved in the archive: its name is fixed and it can take a shape. */
@@ -60,8 +61,9 @@ export function tagChanges(saved: RawTag[], drafts: TagDraft[]) {
   const errors = new Map<number, Partial<Record<TagField, string>>>()
   const flag = (key: number, field: TagField, msg: string) => errors.set(key, { ...errors.get(key), [field]: msg })
   const seen = new Set<string>()
-  const size = (key: number, field: 'width' | 'height', text: string): number | null => {
-    if (!text.trim()) return null
+  const size = (key: number, field: 'width' | 'height', typed: string | number): number | null => {
+    const text = String(typed).trim()
+    if (!text) return null
     const n = Number(text)
     if (!Number.isInteger(n) || n < TAG_SIZE.min || n > TAG_SIZE.max) flag(key, field, `${TAG_SIZE.min}–${TAG_SIZE.max} px`)
     return n
@@ -84,9 +86,10 @@ export function tagChanges(saved: RawTag[], drafts: TagDraft[]) {
 
 /** How a draft shows in the preview, with its saved shape resolved against the public API. */
 export function previewOf(d: TagDraft, apiBase: string): TagStyle {
-  const n = (t: string) => {
+  const n = (typed: string | number) => {
+    const t = String(typed).trim()
     const v = Number(t)
-    return t.trim() && Number.isInteger(v) && v >= TAG_SIZE.min && v <= TAG_SIZE.max ? v : undefined
+    return t && Number.isInteger(v) && v >= TAG_SIZE.min && v <= TAG_SIZE.max ? v : undefined
   }
   return {
     label: d.label.trim() || d.name || 'tag',
