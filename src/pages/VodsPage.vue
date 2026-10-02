@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // Past broadcasts: one filter bar (All resets, title search, game dropdown with every game in the archive, date
 // range; all combinable and kept in the URL), a grid of cards, and "load more". On phones the bar wraps.
-// Unfiltered, the newest VOD also gets its own panel on top, with the most played games under it as filter shortcuts.
+// Unfiltered, the top keeps the newest VOD in its own panel, the latest playthroughs (a row that scrolls sideways, with
+// a button to their tab) and the most played games as filter shortcuts; it stays the same on every tab.
 // Tabs above the bar split the list by tag: plain VODs (merges and splits included) and playthroughs (one game across
 // streams, as one video); the filters apply within the tab.
 import {
@@ -14,11 +15,12 @@ import {
   VxSkeleton,
   VxTabs,
 } from '@vexoulz/ui'
-import { resumeProgress, type GamePlayed, type Progress } from '@vexoulz/vods-core'
+import { resumeProgress, type GamePlayed, type Progress, type Vod } from '@vexoulz/vods-core'
 import { useVods, useVodsContext } from '@vexoulz/vods-core/vue'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import GamePicker from '@/components/GamePicker.vue'
+import LatestPlaythroughs from '@/components/LatestPlaythroughs.vue'
 import LatestVod from '@/components/LatestVod.vue'
 import MostPlayed from '@/components/MostPlayed.vue'
 import VodCard from '@/components/VodCard.vue'
@@ -117,10 +119,21 @@ progress
   .then((all) => (saved.value = new Map(all.map((p) => [p.vodId, p]))))
   .catch(() => undefined)
 /** Where to pick each listed VOD up, if anywhere: one that grew since it was finished (a playthrough's new stream) at the new part. */
-const resume = computed(() => new Map(vods.value.map((v) => [v.id, resumeProgress(saved.value.get(v.id), v.duration)])))
+const resumeOf = (v: Vod) => resumeProgress(saved.value.get(v.id), v.duration)
+const resume = computed(() => new Map(vods.value.map((v) => [v.id, resumeOf(v)])))
 
-// ---- the latest VOD, highlighted on top when nothing is filtered (it stays in the grid too) ----
-const latest = computed(() => (!playthroughs.value && !hasFilters(state.value) && shownFrom.value === 0 && vods.value.length ? vods.value[0]! : null))
+// ---- the top, when nothing is filtered: the latest VOD and playthroughs, whichever tab is open (both stay in the grid too) ----
+const showTop = computed(() => !hasFilters(state.value))
+const tabFilter = (t: Tab) => toApiFilter({ ...parseListQuery({}), tab: t })
+const { vods: latestVods } = useVods(() => ({ ...tabFilter('vods'), page: 1, perPage: 1 }))
+const latest = computed(() => latestVods.value[0] ?? null)
+const { vods: latestPlaythroughs, loading: playthroughsLoading } = useVods(() => ({ ...tabFilter('playthroughs'), page: 1, perPage: 3 }))
+// "See all playthroughs": their tab, unfiltered, scrolled to the list.
+const bar = ref<HTMLElement | null>(null)
+async function allPlaythroughs() {
+  await go({ ...parseListQuery({}), tab: 'playthroughs' }, true)
+  bar.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 
 const countText = computed(() => `${(shownFrom.value + vods.value.length).toLocaleString()} of ${total.value.toLocaleString()}`)
 </script>
@@ -128,12 +141,19 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
 <template>
   <VodsShell>
 
-    <section v-if="latest" class="top">
-      <LatestVod :vod="latest" :progress="resume.get(latest.id)" />
+    <section v-if="showTop" class="top">
+      <LatestVod v-if="latest" :vod="latest" :progress="resumeOf(latest)" />
+      <LatestPlaythroughs
+        :vods="latestPlaythroughs"
+        :loading="playthroughsLoading"
+        :resume="resumeOf"
+        :more="!playthroughs"
+        @more="allPlaythroughs"
+      />
       <MostPlayed :games="games" :error="gamesError" @game="(g) => go({ game: g }, true)" @retry="fetchGames(true)" />
     </section>
 
-    <div class="bar">
+    <div ref="bar" class="bar">
       <h1 class="vx-display">{{ playthroughs ? 'Playthroughs' : 'Past broadcasts' }}</h1>
       <VxTabs v-model="tab" :options="tabOptions" label="Kind of VOD" class="tabs" />
       <div class="filters">
@@ -144,7 +164,7 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
         <GamePicker v-model="game" :games="games" :error="gamesError" @retry="fetchGames(true)" />
         <VxPopover width="min(320px, calc(100vw - 32px))" role="dialog">
           <template #trigger="{ toggle, open }">
-            <VxButton :pressed="open || !!(state.from || state.to)" @click="toggle">📅 {{ dateLabel }} ▾</VxButton>
+            <VxButton :pressed="open || !!(state.from || state.to)" @click="toggle">{{ dateLabel }} ▾</VxButton>
           </template>
           <div class="date-pop">
             <div class="vx-eyebrow">Streamed between</div>
@@ -190,7 +210,7 @@ const countText = computed(() => `${(shownFrom.value + vods.value.length).toLoca
 </template>
 
 <style scoped>
-.bar { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
+.bar { scroll-margin-top: 16px; display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
 .bar h1 { font-size: 28px; }
 .tabs { align-self: flex-start; max-width: 100%; }
 .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
