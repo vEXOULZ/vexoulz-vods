@@ -2,15 +2,14 @@
 // One VOD in the list: YouTube thumbnail with duration, fanned game posters (a button: opens the chapters, each a
 // link to that point), chapter strip, and where you stopped (from watch progress) with a bar showing how much
 // you've seen. Thumbnail and title link to the VOD; the posters sit outside those links. A tagged VOD (a playthrough)
-// shows its tags as chips by the date; new, updated and complete hang off the thumbnail as tags (ThumbTags).
+// shows its tags by the date as chips, or hanging off the thumbnail (ThumbTags), as `site.tags` says.
 import { gamePalette, learnGameColors, VxChapterBar, VxChip, VxLink, VxMenuItem, VxPlaceholder, VxPopover, VxPosters } from '@vexoulz/ui'
 import { boxArt, isFinished, toClock, watchPath, type Progress, type Vod } from '@vexoulz/vods-core'
 import { computed, watchEffect } from 'vue'
 import { useThumbnail } from '@/composables/useThumbnail'
 import { cutNote } from '@/lib/cuts'
 import { gamesWithArt } from '@/lib/art'
-import { tagLabel } from '@/lib/listQuery'
-import { COMPLETE_TAG } from '@/lib/vodTags'
+import { splitTags, tagStyle } from '@/lib/vodTags'
 import ThumbTags from './ThumbTags.vue'
 
 const props = defineProps<{ vod: Vod; progress?: Progress | null }>()
@@ -27,8 +26,7 @@ const to = computed(() => watchPath(props.vod, props.progress?.t))
 const grown = computed(() => !!props.progress && isFinished(props.progress))
 const watched = computed(() => (props.progress && props.vod.duration ? Math.min(1, props.progress.t / props.vod.duration) : 0))
 const title = computed(() => props.vod.title || 'Untitled stream')
-// `complete` is on the thumbnail instead.
-const chips = computed(() => props.vod.tags.filter((t) => t !== COMPLETE_TAG))
+const chips = computed(() => splitTags(props.vod).chips.map((name) => ({ name, ...tagStyle(name) })))
 
 const { src: thumb, srcset: thumbSet, onLoad: thumbLoaded, onError: thumbFailed } = useThumbnail(() => props.vod, 'hidpi')
 </script>
@@ -92,7 +90,7 @@ const { src: thumb, srcset: thumbSet, onLoad: thumbLoaded, onError: thumbFailed 
       <span class="title">{{ title }}</span>
       <span class="meta">
         <span class="vx-mono date">{{ date }}</span>
-        <VxChip v-for="t in chips" :key="t" class="tag">{{ tagLabel(t) }}</VxChip>
+        <VxChip v-for="t in chips" :key="t.name" class="tag" :style="t.color ? { color: t.color, borderColor: t.color } : undefined">{{ t.label }}</VxChip>
         <span v-if="games.length" class="games">{{ games.map((g) => g.name).join(', ') }}</span>
       </span>
     </VxLink>

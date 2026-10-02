@@ -12,8 +12,35 @@ export const vodsConfig = defineVodsConfig({
   defaultPartDuration: 10800,
 })
 
+/** How a VOD tag shows (see `site.tags`). */
+export interface TagStyle {
+  /** What it reads as: on its chip, or to screen readers when drawn. */
+  label: string
+  /** Hangs off the thumbnail as a drawn tag; otherwise it's a chip by the date. */
+  drawn: boolean
+  /** Any CSS color: the drawn tag's paint, or the chip's text and border. Unset: the default look. */
+  color?: string
+  /** A drawn tag's vector image (a URL, e.g. `/tags/new.svg` from `public/`); its opaque parts are painted in
+   * `color`. Null: a placeholder until the image exists. */
+  shape?: string | null
+  /** A drawn tag's size in px. Default 62 × 22. */
+  width?: number
+  height?: number
+}
+
 export const site = {
   twitchUrl: 'https://twitch.tv/vexoulz',
   /** VOD cards per page. */
   perPage: 24,
+  /**
+   * VOD tags, by name. `new` and `updated` come from the VOD's dates (src/lib/vodTags.ts); the rest are tags set on
+   * the VOD (`compilation` on a playthrough, `complete` from its manage page). A tag not listed is a chip with its
+   * own name.
+   */
+  tags: {
+    new: { label: 'new', drawn: true, color: 'var(--vx-accent)', shape: null },
+    updated: { label: 'updated', drawn: true, color: 'var(--vx-info)', shape: null },
+    complete: { label: 'complete', drawn: true, color: 'var(--vx-ok)', shape: null },
+    compilation: { label: 'playthrough', drawn: false },
+  } as Record<string, TagStyle>,
 }
