@@ -1,0 +1,61 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "vods-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--host",
+        "127.0.0.1"
+      ],
+      "port": 5175
+    },
+    {
+      "name": "vods-mock",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--host",
+        "127.0.0.1",
+        "--mode",
+        "mock"
+      ],
+      "port": 5175
+    },
+    {
+      "name": "vods-dev-alt",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "5185"
+      ],
+      "port": 5185
+    },
+    {
+      "name": "vods-mock-alt",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--mode",
+        "mock",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "5186"
+      ],
+      "port": 5186
+    }
+  ]
+}
