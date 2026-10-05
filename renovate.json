@@ -3,6 +3,6 @@
   "extends": ["github>vEXOULZ/conventions//renovate/default"],
   "packageRules": [
     { "matchUpdateTypes": ["minor", "patch"], "matchDepTypes": ["devDependencies"], "groupName": "dev dependencies (non-major)" },
-    { "matchPackageNames": ["@vexoulz/ui", "@vexoulz/vods-core"], "groupName": "vexoulz packages", "description": "Tagged git releases of the shared design and the vods engine." }
+    { "matchPackageNames": ["@vexoulz/ui", "@vexoulz/vods-core", "vEXOULZ/vexoulz-ui", "vEXOULZ/vods-core"], "groupName": "vexoulz packages", "description": "Tagged git releases of the shared design and the vods engine." }
   ]
 }
