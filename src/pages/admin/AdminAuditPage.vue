@@ -22,7 +22,7 @@ const filters = computed<AuditFilters>({
   },
 })
 
-onMounted(() => (document.title = 'Audit log · Manage · vods.vexoulz.net'))
+onMounted(() => (document.title = 'Audit log · Manage · vods.vexoul.net'))
 </script>
 
 <template>

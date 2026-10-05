@@ -2,7 +2,7 @@
 
 # vexoulz-vods
 
-vods.vexoulz.net: the VOD archive (list, watch page across YouTube parts, chat replay, `/manage`), on the
+vods.vexoul.net: the VOD archive (list, watch page across YouTube parts, chat replay, `/manage`), on the
 shared `@vexoulz/ui` design and the `@vexoulz/vods-core` engine. Published by `publish.yml` to the
 `deploy` branch.
 

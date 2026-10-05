@@ -37,7 +37,7 @@ const shareUrl = (t: number) => `${location.origin}${route.path}?part=${index.va
 const pick = (i: number) => router.push({ query: { part: String(i + 1) } })
 
 watchEffect(() => {
-  document.title = vod.value && game.value ? `${gameName(game.value)} · ${vod.value.title} · vods.vexoulz.net` : 'vods.vexoulz.net'
+  document.title = vod.value && game.value ? `${gameName(game.value)} · ${vod.value.title} · vods.vexoul.net` : 'vods.vexoul.net'
 })
 </script>
 

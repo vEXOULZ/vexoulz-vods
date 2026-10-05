@@ -8,7 +8,7 @@ import { platform } from '@/admin/platform'
 const props = defineProps<{ id: string }>()
 const jobId = computed(() => Number(props.id))
 
-onMounted(() => (document.title = `Job ${props.id} · Manage · vods.vexoulz.net`))
+onMounted(() => (document.title = `Job ${props.id} · Manage · vods.vexoul.net`))
 </script>
 
 <template>

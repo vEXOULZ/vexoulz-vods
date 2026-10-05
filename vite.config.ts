@@ -22,7 +22,7 @@ export default defineConfig(({ mode }) => {
   const adminTarget = env.VITE_DEV_ADMIN_TARGET
   return {
     define: { __COMMIT__: JSON.stringify(commit()) },
-    plugins: [vue(), ...(adminTarget ? [] : [adminMock('/backend-admin', `${env.VITE_DEV_API_TARGET || 'https://vods.vexoulz.net'}/backend`)])],
+    plugins: [vue(), ...(adminTarget ? [] : [adminMock('/backend-admin', `${env.VITE_DEV_API_TARGET || 'https://vods.vexoul.net'}/backend`)])],
     resolve: {
       alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
     },
@@ -33,7 +33,7 @@ export default defineConfig(({ mode }) => {
       // Vite matches these by prefix in order, so /backend-admin has to come before /backend.
       proxy: {
         ...(adminTarget ? { '/backend-admin': { target: adminTarget, changeOrigin: true, rewrite: (p: string) => p.replace(/^\/backend-admin/, '') } } : {}),
-        '/backend': { target: env.VITE_DEV_API_TARGET || 'https://vods.vexoulz.net', changeOrigin: true },
+        '/backend': { target: env.VITE_DEV_API_TARGET || 'https://vods.vexoul.net', changeOrigin: true },
       },
     },
     test: { include: ['tests/**/*.test.ts'] },

@@ -30,7 +30,7 @@ const signinError = computed(() => {
 const offered = computed(() => session.passwordLogin || session.twitchLogin)
 
 onMounted(async () => {
-  document.title = 'Sign in · Manage · vods.vexoulz.net'
+  document.title = 'Sign in · Manage · vods.vexoul.net'
   await ensure()
   if (session.authenticated) router.replace(next.value)
   else if (!session.twitchLogin) field.value?.focus()
@@ -61,7 +61,7 @@ async function submit() {
 <template>
   <VodsShell sky="dim">
     <form class="login vx-panel" @submit.prevent="submit">
-      <div class="vx-eyebrow">vods.vexoulz.net</div>
+      <div class="vx-eyebrow">vods.vexoul.net</div>
       <h1 class="vx-display">Manage</h1>
       <VxCallout v-if="signinError" tone="error">{{ signinError }}</VxCallout>
       <VxCallout v-else-if="session.notice && !error" tone="warn">{{ session.notice }}</VxCallout>

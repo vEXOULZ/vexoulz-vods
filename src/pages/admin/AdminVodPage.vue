@@ -87,8 +87,8 @@ function deleted() {
   router.replace('/manage/vods')
 }
 
-watch(vod, (v) => (document.title = `${v?.title ?? props.id} · Manage · vods.vexoulz.net`))
-onMounted(() => (document.title = `VOD ${props.id} · Manage · vods.vexoulz.net`))
+watch(vod, (v) => (document.title = `${v?.title ?? props.id} · Manage · vods.vexoul.net`))
+onMounted(() => (document.title = `VOD ${props.id} · Manage · vods.vexoul.net`))
 </script>
 
 <template>

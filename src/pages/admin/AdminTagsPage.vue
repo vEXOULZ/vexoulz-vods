@@ -129,7 +129,7 @@ async function dropShape(d: TagDraft) {
 }
 
 onMounted(() => {
-  document.title = 'Tags · Manage · vods.vexoulz.net'
+  document.title = 'Tags · Manage · vods.vexoul.net'
   void load()
 })
 </script>

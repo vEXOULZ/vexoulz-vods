@@ -24,7 +24,7 @@ const COUNT_STATES = [
   { state: 'cancelled', tone: 'default' },
 ] as const
 
-onMounted(() => (document.title = 'Overview · Manage · vods.vexoulz.net'))
+onMounted(() => (document.title = 'Overview · Manage · vods.vexoul.net'))
 
 type Dot = 'live' | 'ok' | 'warn' | 'off'
 const tiles = computed(() => {
