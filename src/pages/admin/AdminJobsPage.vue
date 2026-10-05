@@ -45,7 +45,7 @@ function started(id: number) {
 }
 
 onMounted(async () => {
-  document.title = 'Jobs · Manage · vods.vexoulz.net'
+  document.title = 'Jobs · Manage · vods.vexoul.net'
   try {
     kinds.value = await platform.jobKinds()
   } catch {

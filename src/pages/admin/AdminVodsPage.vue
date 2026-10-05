@@ -117,7 +117,7 @@ async function add(mode: 'archive' | 'create') {
   }
 }
 
-onMounted(() => (document.title = 'VODs · Manage · vods.vexoulz.net'))
+onMounted(() => (document.title = 'VODs · Manage · vods.vexoul.net'))
 </script>
 
 <template>

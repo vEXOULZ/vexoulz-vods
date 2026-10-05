@@ -1,4 +1,4 @@
-# vods.vexoulz.net
+# vods.vexoul.net
 
 The VOD archive: past broadcasts with their YouTube uploads, a timeline across all parts, and the Twitch chat
 replayed alongside. Vue 3 + TypeScript on the shared [`@vexoulz/ui`](https://github.com/vEXOULZ/vexoulz-ui) design
@@ -73,10 +73,10 @@ answers 404 there instead, as the archive does until it has those routes.
 
 ## Signing in
 
-The header's account menu is the shared *.vexoulz.net sign-in (vexoulz-auth, through `@vexoulz/ui/account`;
+The header's account menu is the shared *.vexoul.net sign-in (vexoulz-auth, through `@vexoulz/ui/account`;
 `src/lib/account.ts`). Signed in, watch progress is kept with the account (vods-core's `AccountProgressStore`), and
 what this browser saved before is merged into it; signed out, progress stays in the browser. `AUTH_BASE` in
-`src/lib/account.ts` (or `VITE_AUTH_BASE`) is vexoulz-auth's URL, `https://auth.vexoulz.net`; empty turns
+`src/lib/account.ts` (or `VITE_AUTH_BASE`) is vexoulz-auth's URL, `https://auth.vexoul.net`; empty turns
 sign-in off.
 
 ## Assets still needed

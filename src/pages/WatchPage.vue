@@ -89,7 +89,7 @@ const partLabel = computed(() => {
 const shareUrl = (t: number) => `${location.origin}${route.path}?t=${toHMS(t)}`
 
 watchEffect(() => {
-  document.title = vod.value ? `${vod.value.title} · vods.vexoulz.net` : 'vods.vexoulz.net'
+  document.title = vod.value ? `${vod.value.title} · vods.vexoul.net` : 'vods.vexoul.net'
 })
 </script>
 

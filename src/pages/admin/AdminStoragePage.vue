@@ -99,7 +99,7 @@ const dialogOpen = computed({
 })
 
 onMounted(() => {
-  document.title = 'Storage · Manage · vods.vexoulz.net'
+  document.title = 'Storage · Manage · vods.vexoul.net'
   void load()
 })
 </script>

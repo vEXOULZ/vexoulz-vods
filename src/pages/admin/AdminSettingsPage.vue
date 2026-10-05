@@ -86,7 +86,7 @@ function toggleStep(s: RuntimeSetting, kind: string, step: string) {
 }
 
 onMounted(() => {
-  document.title = 'Settings · Manage · vods.vexoulz.net'
+  document.title = 'Settings · Manage · vods.vexoul.net'
   void load()
 })
 </script>

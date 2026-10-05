@@ -147,7 +147,7 @@ async function destroy() {
 }
 
 const when = (at: string | null) => (at ? new Date(at).toLocaleString() : '—')
-watchEffect(() => (document.title = `${props.id ?? 'New synthetic VOD'} · Manage · vods.vexoulz.net`))
+watchEffect(() => (document.title = `${props.id ?? 'New synthetic VOD'} · Manage · vods.vexoul.net`))
 </script>
 
 <template>

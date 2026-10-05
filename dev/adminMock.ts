@@ -504,7 +504,7 @@ const SETTINGS: SettingSpec[] = [
   { key: 'monitor_interval_seconds', type: 'int', group: 'Capture', applies: 'now', help: 'How often Twitch is checked for a live stream', default: 60, min: 5, max: 3600 },
   { key: 'youtube_upload', type: 'bool', group: 'YouTube', applies: 'next job', help: 'Upload to YouTube', default: true },
   { key: 'youtube_public', type: 'bool', group: 'YouTube', applies: 'next job', help: 'Public instead of unlisted (for the main copy)', default: false },
-  { key: 'youtube_description', type: 'text', group: 'YouTube', applies: 'next job', help: 'Last line of every description', default: 'Archived by vods.vexoulz.net' },
+  { key: 'youtube_description', type: 'text', group: 'YouTube', applies: 'next job', help: 'Last line of every description', default: 'Archived by vods.vexoul.net' },
   { key: 'youtube_keepalive_hours', type: 'float', group: 'YouTube', applies: 'now', help: 'How often the YouTube token is refreshed (from the next refresh)', default: 72, min: 1, max: 720 },
   { key: 'restricted_games', type: 'list', group: 'Pipeline', applies: 'next job', help: 'Chapters of these games are left out of uploads', default: ['Music'] },
   { key: 'split_duration', type: 'int', group: 'Pipeline', applies: 'next job', help: 'Maximum YouTube part length in seconds', default: 43200, min: 600, max: 43200 },
@@ -676,7 +676,7 @@ function storageJson() {
   }
 }
 
-export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vexoulz.net/backend'): Plugin {
+export function adminMock(base = '/backend-admin', publicApi = 'https://vods.vexoul.net/backend'): Plugin {
   return {
     name: 'vods-admin-mock',
     apply: 'serve',
