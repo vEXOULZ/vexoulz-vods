@@ -81,7 +81,6 @@ sign-in off.
 
 ## Assets still needed
 
-- The Twitch mark on the header's Manage button (`src/components/ManageLink.vue`, a `VxPlaceholder` for now).
 - A vector shape for each drawn thumbnail tag: new, updated and complete (`VxPlaceholder`s for now). Upload them on
   `/manage/tags` once the archive has the site tags routes (`docs/admin-api.md` §6); until then put the SVGs in
   `public/tags/` and set each one's `shape` in `site.tags` (`src/vods.config.ts`).
