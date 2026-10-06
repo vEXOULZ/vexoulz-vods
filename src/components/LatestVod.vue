@@ -2,7 +2,7 @@
 // The newest VOD, above the list: a big thumbnail, when it was streamed and for how long, how many parts it was
 // uploaded in, and every chapter with its game, start and length (each a link to that point). Resumes where you
 // stopped, if you did. "See all VODs" goes to the VODs page.
-import { gamePalette, learnGameColors, VxButton, VxChapterBar, VxChip, VxLink, VxPlaceholder, VxPosters } from '@vexoulz/ui'
+import { gamePalette, learnGameColors, VxButton, VxChapterBar, VxChip, VxLink, VxNoThumbnail, VxPosters } from '@vexoulz/ui'
 import { boxArt, isFinished, toClock, watchPath, type Progress, type Vod } from '@vexoulz/vods-core'
 import { computed, watchEffect } from 'vue'
 import SeeAllButton from './SeeAllButton.vue'
@@ -39,7 +39,7 @@ const { src: thumb, srcset: thumbSet, onLoad: thumbLoaded, onError: thumbFailed 
         <VxLink :to="to" class="thumb-link" :aria-label="title" tabindex="-1">
           <div class="vx-ring img">
             <img v-if="thumb" :src="thumb" :srcset="thumbSet" alt="" decoding="async" @load="thumbLoaded" @error="thumbFailed" />
-            <VxPlaceholder v-else label="no thumbnail" ratio="16 / 9" />
+            <VxNoThumbnail v-else />
           </div>
           <span class="dur vx-mono">{{ toClock(vod.duration) }}</span>
           <span v-if="progress" class="watched" :style="{ width: `${watched * 100}%` }"></span>
