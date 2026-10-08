@@ -1,6 +1,7 @@
-// The channel this site archives. Everything the old site read from REACT_APP_* lives here.
-// A friend's instance changes these values (and nothing else in the code).
+// The channel this site archives and what tells it from the other vods sites. The pages, the player and Manage are
+// vods-core's app (`createVodsApp()` in main.ts); a friend's instance changes these values and nothing else.
 import { defineVodsConfig } from '@vexoulz/vods-core'
+import { DEFAULT_TAGS, type VodsSite } from '@vexoulz/vods-core/app'
 
 export const vodsConfig = defineVodsConfig({
   channel: 'vEXOULZ',
@@ -12,52 +13,20 @@ export const vodsConfig = defineVodsConfig({
   defaultPartDuration: 10800,
 })
 
-/** How a VOD tag shows (see `site.tags`). */
-export interface TagStyle {
-  /** What it reads as: on its chip, or to screen readers when drawn. */
-  label: string
-  /** Hangs off the thumbnail as a drawn tag; otherwise it's a chip by the date. */
-  drawn: boolean
-  /** Any CSS color: the drawn tag's paint, or the chip's text and border. Unset: the default look. */
-  color?: string
-  /** A drawn tag's vector image (a URL, e.g. `/tags/new.svg` from `public/`), in its own colors: the parts in
-   * `currentColor` (or, in a file without currentColor, the black parts) take `color` (lib/tagShape). Null: a
-   * placeholder until the image exists. */
-  shape?: string | null
-  /** A drawn tag's size in px. Default 62 × 22. */
-  width?: number
-  height?: number
-  /** Text written on a drawn tag (not the label, which stays for chips and screen readers). Unset: none. */
-  text?: string
-  /** The text's color (any CSS color) and size in px. Unset: the page background's color, and half the height. */
-  textColor?: string
-  textSize?: number
-  /** Moves the text from the tag's middle, in px (e.g. off a tag's hole). */
-  textX?: number
-  textY?: number
-  /** Turns the text, in degrees, clockwise (−180 to 180). Unset: level with the tag. */
-  textRotate?: number
-  /** A pattern over the tag-colored parts: diagonal stripes or checks of `color` and `patternColor`. Unset: plain. */
-  pattern?: 'stripes' | 'checks'
-  /** The pattern's second color (any CSS color) and the width of one stripe or square in px. Unset: the page
-   * background's color, and 4. */
-  patternColor?: string
-  patternSize?: number
+export const site: Partial<VodsSite> & Pick<VodsSite, 'id' | 'name' | 'twitchUrl'> = {
+  // Its entry in vexoulz-ui's SITES: accent, sky, switcher entry.
+  id: 'vods',
+  name: 'vods.vexoul.net',
+  twitchUrl: 'https://twitch.tv/vexoulz',
+  /**
+   * VOD tags, by name, until the archive has tags edited on /manage/tags. `new` and `updated` come from the VOD's
+   * dates; the rest are set on the VOD. A drawn tag's `shape` is its image in `public/tags/`, null until it exists.
+   */
+  tags: DEFAULT_TAGS,
 }
 
-export const site = {
-  twitchUrl: 'https://twitch.tv/vexoulz',
-  /** VOD cards per page. */
-  perPage: 24,
-  /**
-   * VOD tags, by name. `new` and `updated` come from the VOD's dates (src/lib/vodTags.ts); the rest are tags set on
-   * the VOD (`compilation` on a playthrough, `complete` from its manage page). A tag not listed is a chip with its
-   * own name. These are the defaults: once the archive has tags edited on /manage/tags, the site uses those.
-   */
-  tags: {
-    new: { label: 'new', drawn: true, color: 'var(--vx-accent)', shape: null },
-    updated: { label: 'updated', drawn: true, color: 'var(--vx-info)', shape: null },
-    complete: { label: 'complete', drawn: true, color: 'var(--vx-ok)', shape: null },
-    compilation: { label: 'playthrough', drawn: false },
-  } as Record<string, TagStyle>,
-}
+/**
+ * vexoulz-auth's URL, the shared *.vexoul.net sign-in. VITE_AUTH_BASE overrides it (a copy hosted elsewhere points it
+ * at its own, or sets it empty: that turns sign-in off, and the menu's "Sign in" is greyed out).
+ */
+export const AUTH_BASE = import.meta.env.VITE_AUTH_BASE ?? 'https://auth.vexoul.net'
