@@ -1,14 +1,16 @@
 # vods.vexoul.net
 
 The VOD archive: past broadcasts with their YouTube uploads, a timeline across all parts, and the Twitch chat
-replayed alongside. Vue 3 + TypeScript on the shared [`@vexoulz/ui`](https://github.com/vEXOULZ/vexoulz-ui) design
-and the headless [`@vexoulz/vods-core`](https://github.com/vEXOULZ/vods-core) engine. Replaces Archive-React-Vex.
+replayed alongside. The site itself (pages, player, chat replay, Manage) is
+[`@vexoulz/vods-core`](https://github.com/vEXOULZ/vods-core)'s app on the shared
+[`@vexoulz/ui`](https://github.com/vEXOULZ/vexoulz-ui) design; this repo is its channel config, name, art and
+`main.ts` (`createVodsApp()`). A change to a page or to Manage goes in vods-core, and reaches the site with a
+release and a pin bump. Replaces Archive-React-Vex.
 
 ```bash
 npm install
 npm run dev         # http://localhost:5175 (proxies /backend to the archive API)
 npm run typecheck   # vue-tsc
-npm test            # vitest
 npm run build       # → dist/
 git config core.hooksPath .conventions/githooks   # once per clone: branch-name rules, see CONTRIBUTING.md
 ```
@@ -50,18 +52,18 @@ folders, deleting stale ones), Settings (the worker's runtime settings over its 
 a session (HttpOnly cookie + CSRF token) from "Sign in with Twitch" (through vexoulz-auth, for the worker's
 `ARCHIVE_ADMIN_TWITCH_IDS`) or the admin password, which only works from the local network; the browser never holds an
 API key. The contract is in
-[docs/admin-api.md](docs/admin-api.md). The old `/admin/...` URLs redirect to `/manage/...`.
+[vods-core's docs/admin-api.md](https://github.com/vEXOULZ/vods-core/blob/main/docs/admin-api.md). The old `/admin/...` URLs redirect to `/manage/...`.
 
 There is one sign-in. An admin signs in from the header's account menu, and a Twitch-purple **Manage** button appears
 in the header (and a "Manage" item in the menu); the Manage bar shows only on the `/manage` pages. Someone signed in
 to the account is checked once per browser, quietly: one trip through the worker's `/admin/signin?quiet=1`, which
-comes straight back with `admin=1` or `admin=0` (`src/admin/quiet.ts`). The answer is kept in `localStorage` as
+comes straight back with `admin=1` or `admin=0` (vods-core's `src/app/admin/quiet.ts`). The answer is kept in `localStorage` as
 `vods-admin:<twitch id>`, so a plain viewer isn't checked again; for an admin, a dashboard session that ends while
 the account is still signed in is renewed the same way. Signing out ends both and forgets the answer. Opening a
 Manage page signed out goes through the worker's Twitch sign-in, which signs in to the account on the way;
 `/manage/login` explains a failed sign-in and keeps the admin password for the local network.
 
-In `npm run dev`, `/backend-admin` is a built-in in-memory mock (`dev/adminMock.ts`, password `admin`, and
+In `npm run dev`, `/backend-admin` is a built-in in-memory mock (`@vexoulz/vods-core/dev`, password `admin`, and
 "Sign in with Twitch" signs a fake admin in at once, as does the quiet check unless `MOCK_ADMIN_QUIET=no`; VODs come
 from the public archive API and edits stay in memory) unless
 `VITE_DEV_ADMIN_TARGET` is set in `.env.local`. The mock is never part of a build. To use the mock while
@@ -74,21 +76,24 @@ answers 404 there instead, as the archive does until it has those routes.
 ## Signing in
 
 The header's account menu is the shared *.vexoul.net sign-in (vexoulz-auth, through `@vexoulz/ui/account`;
-`src/lib/account.ts`). Signed in, watch progress is kept with the account (vods-core's `AccountProgressStore`), and
+set up by `createVodsApp()`). Signed in, watch progress is kept with the account (vods-core's `AccountProgressStore`), and
 what this browser saved before is merged into it; signed out, progress stays in the browser. `AUTH_BASE` in
-`src/lib/account.ts` (or `VITE_AUTH_BASE`) is vexoulz-auth's URL, `https://auth.vexoul.net`; empty turns
+`src/vods.config.ts` (or `VITE_AUTH_BASE`) is vexoulz-auth's URL, `https://auth.vexoul.net`; empty turns
 sign-in off.
 
 ## Assets still needed
 
-- The Twitch mark on the header's Manage button (`src/components/ManageLink.vue`, a `VxPlaceholder` for now).
+The no-thumbnail art and the Twitch mark are vexoul's own (`VxNoThumbnail`, `VxTwitchGlyph` from `@vexoulz/ui`), given
+to the app as `art` in `src/main.ts`; without them vods-core draws plain placeholders.
+
 - A vector shape for each drawn thumbnail tag: new, updated and complete (`VxPlaceholder`s for now). Upload them on
-  `/manage/tags` once the archive has the site tags routes (`docs/admin-api.md` §6); until then put the SVGs in
+  `/manage/tags` once the archive has the site tags routes (vods-core's `docs/admin-api.md` §6); until then put the SVGs in
   `public/tags/` and set each one's `shape` in `site.tags` (`src/vods.config.ts`).
 
 ## Config
 
-Channel settings live in [`src/vods.config.ts`](src/vods.config.ts). The API base comes from `VITE_ARCHIVE_API`
+The channel, the site's name, Twitch link and tags, and the sign-in's URL live in
+[`src/vods.config.ts`](src/vods.config.ts). The API base comes from `VITE_ARCHIVE_API`
 (default `/backend`, same origin). In dev, Vite proxies `/backend` to `VITE_DEV_API_TARGET`, which defaults to the
 public archive. See `.env.example`.
 

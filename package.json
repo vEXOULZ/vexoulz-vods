@@ -7,8 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "vue-tsc --noEmit",
-    "test": "vitest run"
+    "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
     "@vexoulz/platform-web": "github:vEXOULZ/vex-platform-web#v0.3.0",
@@ -20,10 +19,8 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@vitejs/plugin-vue": "^6.0.0",
-    "happy-dom": "^20.14.5",
     "typescript": "~5.9.3",
     "vite": "^7.3.0",
-    "vitest": "^4.1.0",
     "vue-tsc": "^3.3.0"
   },
   "engines": {

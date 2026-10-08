@@ -1,147 +1,19 @@
 import '@vexoulz/ui/fonts.css'
 import '@vexoulz/ui/style.css'
-
-import { AccountProgressStore } from '@vexoulz/vods-core'
-import { createVods } from '@vexoulz/vods-core/vue'
-import { VxBuild, useToast } from '@vexoulz/ui'
-import { createPlatformUi } from '@vexoulz/platform-web/vue'
-import { createApp, watch } from 'vue'
-import { createRouter, createWebHistory, RouterLink } from 'vue-router'
-
 import '@vexoulz/platform-web/style.css'
-import './styles/platform.css'
+import '@vexoulz/vods-core/app.css'
 
-import App from './App.vue'
-import { answerOf, recall, remember, shouldCheck } from './admin/quiet'
-import { ensure, quietLoginUrl, session, setExpiredHandler, twitchLoginUrl } from './admin/session'
-import { account } from './lib/account'
-import { loadTagConfig } from './lib/vodTags'
-import { vodsConfig } from './vods.config'
+import { VxNoThumbnail, VxTwitchGlyph } from '@vexoulz/ui'
+import { createVodsApp } from '@vexoulz/vods-core/app'
 
-const WatchPage = () => import('./pages/WatchPage.vue')
-const VodsPage = () => import('./pages/VodsPage.vue')
+import { AUTH_BASE, site, vodsConfig } from './vods.config'
 
-const router = createRouter({
-  history: createWebHistory(),
-  routes: [
-    { path: '/', component: () => import('./pages/HomePage.vue') },
-    // The lists. /vods?tab=playthroughs is the old link to the playthroughs.
-    {
-      path: '/vods',
-      component: VodsPage,
-      props: { tab: 'vods' },
-      beforeEnter: (to) => {
-        if (to.query.tab === undefined) return true
-        const { tab, ...query } = to.query
-        return { path: tab === 'playthroughs' ? '/playthroughs' : '/vods', query, hash: to.hash }
-      },
-    },
-    { path: '/playthroughs', component: VodsPage, props: { tab: 'playthroughs' } },
-    // Same URLs as the old site: /vods/:id plays the VOD uploads, /live/:id the live-recorded ones,
-    // /youtube/:id whichever set exists (live first).
-    { path: '/vods/:id', component: WatchPage, props: (r) => ({ id: r.params.id, type: 'vod' }) },
-    { path: '/live/:id', component: WatchPage, props: (r) => ({ id: r.params.id, type: 'live' }) },
-    { path: '/youtube/:id', component: WatchPage, props: (r) => ({ id: r.params.id, type: null }) },
-    { path: '/games/:id', component: () => import('./pages/GamesPage.vue'), props: true },
-    // Manage: the archive's admin pages. Every page but the login needs a dashboard session; see src/admin/session.ts.
-    { path: '/manage/login', component: () => import('./pages/admin/AdminLoginPage.vue'), meta: { public: true } },
-    { path: '/manage', component: () => import('./pages/admin/AdminOverviewPage.vue') },
-    { path: '/manage/jobs', component: () => import('./pages/admin/AdminJobsPage.vue') },
-    { path: '/manage/jobs/:id(\\d+)', component: () => import('./pages/admin/AdminJobPage.vue'), props: true },
-    { path: '/manage/vods', component: () => import('./pages/admin/AdminVodsPage.vue') },
-    { path: '/manage/vods/:id', component: () => import('./pages/admin/AdminVodPage.vue'), props: true },
-    { path: '/manage/synthetic/new', component: () => import('./pages/admin/AdminSyntheticPage.vue') },
-    { path: '/manage/synthetic/:id', component: () => import('./pages/admin/AdminSyntheticPage.vue'), props: true },
-    { path: '/manage/storage', component: () => import('./pages/admin/AdminStoragePage.vue') },
-    { path: '/manage/settings', component: () => import('./pages/admin/AdminSettingsPage.vue') },
-    { path: '/manage/tags', component: () => import('./pages/admin/AdminTagsPage.vue') },
-    { path: '/manage/audit', component: () => import('./pages/admin/AdminAuditPage.vue') },
-    // The old admin URLs, for bookmarks and the worker's sign-in errors (it sends those to /admin/login).
-    { path: '/admin/:rest(.*)*', redirect: (to) => ({ path: `/manage${to.path.slice('/admin'.length)}`, query: to.query, hash: to.hash }) },
-    { path: '/:pathMatch(.*)*', component: () => import('./pages/NotFoundPage.vue') },
-  ],
-  scrollBehavior: (to, from, saved) => saved ?? (to.path !== from.path ? { top: 0 } : undefined),
-})
-
-// A dashboard session that ends mid-use: an admin still signed in to the account gets a new one quietly (one trip,
-// src/admin/quiet.ts); anyone else goes to the sign-in page, which says why.
-setExpiredHandler(() => {
-  const here = router.currentRoute.value
-  const user = account.user.value
-  if (user && recall(user.id) === 'yes' && shouldCheck(user.id)) return window.location.assign(quietLoginUrl(here.fullPath))
-  if (here.path.startsWith('/manage') && !here.meta.public) router.push({ path: '/manage/login', query: { next: here.fullPath } })
-})
-
-// Manage pages need a dashboard session. Without one, the visitor goes through the worker's Twitch sign-in (which
-// signs in to the account on the way) and comes back to the page; with that off, or after a session ended, to the
-// sign-in page.
-router.beforeEach(async (to) => {
-  if (!to.path.startsWith('/manage') || to.meta.public) return true
-  await ensure()
-  if (session.authenticated) return true
-  if (session.twitchLogin && !session.notice) {
-    window.location.assign(twitchLoginUrl(to.fullPath))
-    return false
-  }
-  return { path: '/manage/login', query: { next: to.fullPath } }
-})
-
-// Signed in to the account: read the quiet check's answer off the URL, and ask once if this browser doesn't know
-// whether the account is one of the archive's admins. A known viewer never loads the dashboard session.
-void router.isReady().then(() =>
-  watch(
-    () => [account.user.value, account.ready.value, router.currentRoute.value.query.admin] as const,
-    async ([user, ready]) => {
-      if (!ready) return
-      const here = router.currentRoute.value
-      const answer = answerOf(here.query)
-      if (here.query.admin !== undefined) {
-        const { admin: _a, ...query } = here.query
-        void router.replace({ path: here.path, query, hash: here.hash })
-      }
-      if (!user) return
-      if (answer) remember(user.id, answer)
-      if (recall(user.id) === 'no') return
-      await ensure()
-      if (session.authenticated) {
-        if (session.user?.id === user.id) remember(user.id, 'yes')
-        return
-      }
-      if (!answer && session.twitchLogin && !here.meta.public && shouldCheck(user.id)) {
-        window.location.assign(quietLoginUrl(here.fullPath))
-      }
-    },
-    { immediate: true },
-  ),
-)
-
-// Watch progress follows the signed-in account (vexoulz-auth); signed out it stays in this browser, and signing in
-// moves what this browser has into the account.
-const progress = new AccountProgressStore({ signedIn: () => !!account.user.value, request: account.request })
-watch(account.user, (user, before) => {
-  if (user && !before) void progress.merge()
-})
-
-// How tags show (/manage/tags); the built-in ones until it answers.
-void loadTagConfig()
-
-createApp(App)
-  .use(router)
-  .use(VxBuild, { commit: __COMMIT__ })
-  .use(account)
-  .use(createVods(vodsConfig, { progress }))
-  // The shared jobs, audit and chat-line components: where a job or a subject (vod:<id>, job:<id>) lives, and toasts.
-  .use(
-    createPlatformUi({
-      link: RouterLink,
-      jobHref: (id) => `/manage/jobs/${id}`,
-      subjectHref: (s) => {
-        const m = /^(vod|job):(.+)$/.exec(s)
-        if (!m) return null
-        return m[1] === 'vod' ? `/manage/vods/${encodeURIComponent(m[2]!)}` : `/manage/jobs/${encodeURIComponent(m[2]!)}`
-      },
-      notify: (msg, kind) => useToast().show(msg, { kind, duration: kind === 'error' ? 5000 : 3000 }),
-      appName: 'worker',
-    }),
-  )
-  .mount('#app')
+// The whole site (pages, player, chat replay, Manage) is vods-core's app; this one adds its channel, name and art.
+createVodsApp({
+  config: vodsConfig,
+  site,
+  adminBase: import.meta.env.VITE_ADMIN_API || '/backend-admin',
+  authBase: AUTH_BASE,
+  commit: __COMMIT__,
+  art: { noThumbnail: VxNoThumbnail, twitchGlyph: VxTwitchGlyph },
+}).app.mount('#app')
