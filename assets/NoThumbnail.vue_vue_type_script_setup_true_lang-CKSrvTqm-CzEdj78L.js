@@ -1,0 +1,1 @@
+import{d as s,c as e,b0 as n,o,e as a,b1 as l,ac as m}from"./index-vxCKcFhg.js";const b=s({__name:"NoThumbnail",setup(t){return(c,i)=>e(n).noThumbnail?(o(),a(l(e(n).noThumbnail),{key:0})):(o(),a(e(m),{key:1,label:"no thumbnail",ratio:"16 / 9"}))}});export{b as s};
