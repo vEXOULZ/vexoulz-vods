@@ -10,7 +10,7 @@
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
-    "@vexoulz/platform-web": "github:vEXOULZ/vex-platform-web#v0.3.1",
+    "@vexoulz/platform-web": "github:vEXOULZ/vex-platform-web#v0.4.0",
     "@vexoulz/ui": "github:vEXOULZ/vexoulz-ui#v0.20.1",
     "@vexoulz/vods-core": "github:vEXOULZ/vods-core#v0.22.1",
     "vue": "^3.5.43",
