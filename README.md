@@ -56,15 +56,15 @@ API key. The contract is in
 
 There is one sign-in. An admin signs in from the header's account menu, and a Twitch-purple **Manage** button appears
 in the header (and a "Manage" item in the menu); the Manage bar shows only on the `/manage` pages. Someone signed in
-to the account is checked once per browser, quietly: one trip through the worker's `/admin/signin?quiet=1`, which
-comes straight back with `admin=1` or `admin=0` (vods-core's `src/app/admin/quiet.ts`). The answer is kept in `localStorage` as
-`vods-admin:<twitch id>`, so a plain viewer isn't checked again; for an admin, a dashboard session that ends while
-the account is still signed in is renewed the same way. Signing out ends both and forgets the answer. Opening a
+to the account is checked quietly, once per page load and without leaving the page: vexoulz-auth mints a one-time code
+for the archive (`POST /v1/codes`) and the worker trades it for a dashboard session if the account is an admin (`POST
+/admin/session {code}`; vods-core's `src/app/admin/quiet.ts`). Nothing is kept in the browser. For an admin, a
+dashboard session that ends while the account is still signed in is renewed the same way. Signing out ends both. Opening a
 Manage page signed out goes through the worker's Twitch sign-in, which signs in to the account on the way;
 `/manage/login` explains a failed sign-in and keeps the admin password for the local network.
 
 In `npm run dev`, `/backend-admin` is a built-in in-memory mock (`@vexoulz/vods-core/dev`, password `admin`, and
-"Sign in with Twitch" signs a fake admin in at once, as does the quiet check unless `MOCK_ADMIN_QUIET=no`; VODs come
+"Sign in with Twitch" signs a fake admin in at once; VODs come
 from the public archive API and edits stay in memory) unless
 `VITE_DEV_ADMIN_TARGET` is set in `.env.local`. The mock is never part of a build. To use the mock while
 `.env.local` names a worker, run `npm run dev -- --mode mock` with `VITE_DEV_ADMIN_TARGET=` (empty) in
@@ -72,6 +72,9 @@ from the public archive API and edits stay in memory) unless
 page shows the result (gap chapters, old links sent to the merged VOD).
 It also keeps the site tags edited on `/manage/tags` (and serves `/backend/v1/site/tags`); `MOCK_SITE_TAGS=no`
 answers 404 there instead, as the archive does until it has those routes.
+The mock also serves a fake vexoulz-auth at `/auth-mock`: with `VITE_AUTH_BASE=/auth-mock` in `.env.mock.local`,
+`/auth-mock/login?return=/` signs in the fake admin (`&as=viewer`, or `MOCK_ACCOUNT=viewer`, a plain viewer), and the
+quiet check runs against it (`MOCK_AUTH_CODES=<status>` / `MOCK_ADMIN_CODE=<status>` force an error answer).
 
 ## Signing in
 
