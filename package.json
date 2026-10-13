@@ -12,7 +12,7 @@
   "dependencies": {
     "@vexoulz/platform-web": "github:vEXOULZ/vex-platform-web#v0.6.0",
     "@vexoulz/ui": "github:vEXOULZ/vexoulz-ui#v0.23.0",
-    "@vexoulz/vods-core": "github:vEXOULZ/vods-core#v0.29.0",
+    "@vexoulz/vods-core": "github:vEXOULZ/vods-core#v0.30.0",
     "vue": "^3.5.43",
     "vue-router": "^4.6.4"
   },
