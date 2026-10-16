@@ -7,6 +7,8 @@ interface ImportMetaEnv {
   readonly VITE_ARCHIVE_API?: string
   /** The worker admin API's base URL, for the Manage pages (default `/backend-admin` on the same origin). */
   readonly VITE_ADMIN_API?: string
+  /** doomtp-bot's Twitch user lookup, for chat's user cards (default its public one). Empty turns it off. */
+  readonly VITE_USER_LOOKUP?: string
   /** Dev only (vite.config.ts): where `/backend` is forwarded. */
   readonly VITE_DEV_API_TARGET?: string
   /** Dev only (vite.config.ts): where `/backend-admin` is forwarded; unset uses the mock (dev/adminMock.ts). */

@@ -10,9 +10,9 @@
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
-    "@vexoulz/platform-web": "github:vEXOULZ/vex-platform-web#v0.7.0",
+    "@vexoulz/platform-web": "github:vEXOULZ/vex-platform-web#e4def114b81e754656f1cadc27000bd0c09e6726",
     "@vexoulz/ui": "github:vEXOULZ/vexoulz-ui#v0.23.0",
-    "@vexoulz/vods-core": "github:vEXOULZ/vods-core#v0.32.0",
+    "@vexoulz/vods-core": "github:vEXOULZ/vods-core#60176b9307606dbe38335172a9aa4645e211738a",
     "vue": "^3.5.43",
     "vue-router": "^4.6.4"
   },

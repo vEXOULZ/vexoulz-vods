@@ -30,3 +30,9 @@ export const site: Partial<VodsSite> & Pick<VodsSite, 'id' | 'name' | 'twitchUrl
  * at its own, or sets it empty: that turns sign-in off, and the menu's "Sign in" is greyed out).
  */
 export const AUTH_BASE = import.meta.env.VITE_AUTH_BASE ?? 'https://auth.vexoul.net'
+
+/**
+ * Where chat's user cards look a chatter up on Twitch: doomtp-bot's `/api/v2/twitch/users` (its USER_LOOKUP_ORIGINS
+ * must list this site). VITE_USER_LOOKUP overrides it; empty turns the lookup off, and a card shows what chat knows.
+ */
+export const USER_LOOKUP = import.meta.env.VITE_USER_LOOKUP ?? 'https://dtp.vexoul.net/api/v2/twitch/users'
