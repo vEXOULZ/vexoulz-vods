@@ -6,7 +6,7 @@ import '@vexoulz/vods-core/app.css'
 import { VxNoThumbnail, VxTwitchGlyph } from '@vexoulz/ui'
 import { createVodsApp } from '@vexoulz/vods-core/app'
 
-import { AUTH_BASE, site, vodsConfig } from './vods.config'
+import { AUTH_BASE, site, USER_LOOKUP, vodsConfig } from './vods.config'
 
 // The whole site (pages, player, chat replay, Manage) is vods-core's app; this one adds its channel, name and art.
 createVodsApp({
@@ -16,4 +16,5 @@ createVodsApp({
   authBase: AUTH_BASE,
   commit: __COMMIT__,
   art: { noThumbnail: VxNoThumbnail, twitchGlyph: VxTwitchGlyph },
+  userLookupUrl: USER_LOOKUP || undefined,
 }).app.mount('#app')
