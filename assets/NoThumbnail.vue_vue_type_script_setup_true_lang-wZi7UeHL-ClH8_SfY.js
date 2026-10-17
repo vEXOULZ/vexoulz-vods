@@ -1,0 +1,1 @@
+import{d as s,f as o,aU as e,o as n,c as a,aV as u,U as r}from"./index-1UkBFQf-.js";const i=s({__name:"NoThumbnail",props:{flush:{type:Boolean}},setup(l){return(t,m)=>o(e).noThumbnail?(n(),a(u(o(e).noThumbnail),{key:0})):(n(),a(o(r),{key:1,label:"no thumbnail",ratio:"16 / 9",flush:l.flush},null,8,["flush"]))}});export{i as f};
