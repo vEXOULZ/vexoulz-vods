@@ -1,9 +1,9 @@
 @.conventions/CLAUDE.md
 
-# vexoulz-vods
+# vex-vods
 
 vods.vexoul.net: the VOD archive (list, watch page across YouTube parts, chat replay, `/manage`), on the
-shared `@vexoulz/ui` design and the `@vexoulz/vods-core` engine. Published by `publish.yml` to the
+shared `@vex/ui` design and the `@vex/vods-core` engine. Published by `publish.yml` to the
 `deploy` branch.
 
 - The site is vods-core's app (`createVodsApp()` in `src/main.ts`): pages, Manage and their logic live in vods-core,

@@ -3,7 +3,7 @@ import { fileURLToPath, URL } from 'node:url'
 
 import vue from '@vitejs/plugin-vue'
 import { defineConfig, loadEnv } from 'vite'
-import { adminMock } from '@vexoulz/vods-core/dev'
+import { adminMock } from '@vex/vods-core/dev'
 
 /** The commit this build comes from, shown in the footer (empty outside a git checkout). */
 function commit(): string {
@@ -18,7 +18,7 @@ export default defineConfig(({ mode }) => {
   // Env files next to this config, not in process.cwd(): `vite <dir>` can be started from another folder.
   const env = loadEnv(mode, fileURLToPath(new URL('.', import.meta.url)), '')
   // /backend-admin (the admin pages' API): a real worker when VITE_DEV_ADMIN_TARGET is set (put it in .env.local,
-  // which git ignores), otherwise the in-memory mock (@vexoulz/vods-core/dev).
+  // which git ignores), otherwise the in-memory mock (@vex/vods-core/dev).
   const adminTarget = env.VITE_DEV_ADMIN_TARGET
   return {
     define: { __COMMIT__: JSON.stringify(commit()) },

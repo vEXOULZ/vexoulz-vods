@@ -2,8 +2,8 @@
 
 The VOD archive: past broadcasts with their YouTube uploads, a timeline across all parts, and the Twitch chat
 replayed alongside. The site itself (pages, player, chat replay, Manage) is
-[`@vexoulz/vods-core`](https://github.com/vEXOULZ/vods-core)'s app on the shared
-[`@vexoulz/ui`](https://github.com/vEXOULZ/vexoulz-ui) design; this repo is its channel config, name, art and
+[`@vex/vods-core`](https://github.com/vexouLuna/vods-core)'s app on the shared
+[`@vex/ui`](https://github.com/vexouLuna/vex-ui) design; this repo is its channel config, name, art and
 `main.ts` (`createVodsApp()`). A change to a page or to Manage goes in vods-core, and reaches the site with a
 release and a pin bump. Replaces Archive-React-Vex.
 
@@ -49,21 +49,21 @@ log), VODs (search including hidden and merged ones; per VOD: public or hidden, 
 chapters with Twitch category search and a lock, games rows, YouTube and Drive lists, saved emotes, re-fetch /
 re-upload / delete actions, merge and split; adding VODs the monitor missed), Storage (disk use and the worker's
 folders, deleting stale ones), Settings (the worker's runtime settings over its env defaults) and the audit log. It talks to twitch-archive's worker admin API at `/backend-admin` on the site's origin (`VITE_ADMIN_API`), with
-a session (HttpOnly cookie + CSRF token) from "Sign in with Twitch" (through vexoulz-auth, for the worker's
+a session (HttpOnly cookie + CSRF token) from "Sign in with Twitch" (through vex-auth, for the worker's
 `ARCHIVE_ADMIN_TWITCH_IDS`) or the admin password, which only works from the local network; the browser never holds an
 API key. The contract is in
-[vods-core's docs/admin-api.md](https://github.com/vEXOULZ/vods-core/blob/main/docs/admin-api.md). The old `/admin/...` URLs redirect to `/manage/...`.
+[vods-core's docs/admin-api.md](https://github.com/vexouLuna/vods-core/blob/main/docs/admin-api.md). The old `/admin/...` URLs redirect to `/manage/...`.
 
 There is one sign-in. An admin signs in from the header's account menu, and a Twitch-purple **Manage** button appears
 in the header (and a "Manage" item in the menu); the Manage bar shows only on the `/manage` pages. Someone signed in
-to the account is checked quietly, once per page load and without leaving the page: vexoulz-auth mints a one-time code
+to the account is checked quietly, once per page load and without leaving the page: vex-auth mints a one-time code
 for the archive (`POST /v1/codes`) and the worker trades it for a dashboard session if the account is an admin (`POST
 /admin/session {code}`; vods-core's `src/app/admin/quiet.ts`). Nothing is kept in the browser. For an admin, a
 dashboard session that ends while the account is still signed in is renewed the same way. Signing out ends both. Opening a
 Manage page signed out goes through the worker's Twitch sign-in, which signs in to the account on the way;
 `/manage/login` explains a failed sign-in and keeps the admin password for the local network.
 
-In `npm run dev`, `/backend-admin` is a built-in in-memory mock (`@vexoulz/vods-core/dev`, password `admin`, and
+In `npm run dev`, `/backend-admin` is a built-in in-memory mock (`@vex/vods-core/dev`, password `admin`, and
 "Sign in with Twitch" signs a fake admin in at once; VODs come
 from the public archive API and edits stay in memory) unless
 `VITE_DEV_ADMIN_TARGET` is set in `.env.local`. The mock is never part of a build. To use the mock while
@@ -72,21 +72,21 @@ from the public archive API and edits stay in memory) unless
 page shows the result (gap chapters, old links sent to the merged VOD).
 It also keeps the site tags edited on `/manage/tags` (and serves `/backend/v1/site/tags`); `MOCK_SITE_TAGS=no`
 answers 404 there instead, as the archive does until it has those routes.
-The mock also serves a fake vexoulz-auth at `/auth-mock`: with `VITE_AUTH_BASE=/auth-mock` in `.env.mock.local`,
+The mock also serves a fake vex-auth at `/auth-mock`: with `VITE_AUTH_BASE=/auth-mock` in `.env.mock.local`,
 `/auth-mock/login?return=/` signs in the fake admin (`&as=viewer`, or `MOCK_ACCOUNT=viewer`, a plain viewer), and the
 quiet check runs against it (`MOCK_AUTH_CODES=<status>` / `MOCK_ADMIN_CODE=<status>` force an error answer).
 
 ## Signing in
 
-The header's account menu is the shared *.vexoul.net sign-in (vexoulz-auth, through `@vexoulz/ui/account`;
+The header's account menu is the shared *.vexoul.net sign-in (vex-auth, through `@vex/ui/account`;
 set up by `createVodsApp()`). Signed in, watch progress is kept with the account (vods-core's `AccountProgressStore`), and
 what this browser saved before is merged into it; signed out, progress stays in the browser. `AUTH_BASE` in
-`src/vods.config.ts` (or `VITE_AUTH_BASE`) is vexoulz-auth's URL, `https://auth.vexoul.net`; empty turns
+`src/vods.config.ts` (or `VITE_AUTH_BASE`) is vex-auth's URL, `https://auth.vexoul.net`; empty turns
 sign-in off.
 
 ## Assets still needed
 
-The no-thumbnail art and the Twitch mark are vexoul's own (`VxNoThumbnail`, `VxTwitchGlyph` from `@vexoulz/ui`), given
+The no-thumbnail art and the Twitch mark are vexoul's own (`VxNoThumbnail`, `VxTwitchGlyph` from `@vex/ui`), given
 to the app as `art` in `src/main.ts`; without them vods-core draws plain placeholders.
 
 - A vector shape for each drawn thumbnail tag: new, updated and complete (`VxPlaceholder`s for now). Upload them on
@@ -104,7 +104,7 @@ public archive. See `.env.example`.
 
 `.github/workflows/publish.yml` runs the checks, builds, and pushes `dist/` to the `deploy` branch on every merge
 to `main`. The site is a single-page app, so the server must answer unknown paths with `index.html` and send
-`/backend/*` to the archive API. `@vexoulz/ui` and `@vexoulz/vods-core` are pinned to git tags in `package.json`,
+`/backend/*` to the archive API. `@vex/ui` and `@vex/vods-core` are pinned to git tags in `package.json`,
 and Renovate opens the bumps.
 
 ## Infrastructure
