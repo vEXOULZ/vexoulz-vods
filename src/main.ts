@@ -1,10 +1,10 @@
-import '@vexoulz/ui/fonts.css'
-import '@vexoulz/ui/style.css'
-import '@vexoulz/platform-web/style.css'
-import '@vexoulz/vods-core/app.css'
+import '@vex/ui/fonts.css'
+import '@vex/ui/style.css'
+import '@vex/platform-web/style.css'
+import '@vex/vods-core/app.css'
 
-import { VxNoThumbnail, VxTwitchGlyph } from '@vexoulz/ui'
-import { createVodsApp } from '@vexoulz/vods-core/app'
+import { VxNoThumbnail, VxTwitchGlyph } from '@vex/ui'
+import { createVodsApp } from '@vex/vods-core/app'
 
 import { AUTH_BASE, site, USER_LOOKUP, vodsConfig } from './vods.config'
 
